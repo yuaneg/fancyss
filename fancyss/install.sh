@@ -210,10 +210,12 @@ restart_websocketd_async() {
 		done
 		rm -f "${WS_PIDFILE}" >/dev/null 2>&1 || true
 		if [ -x "/koolshare/bin/websocketd" ] && [ -f "/koolshare/ss/websocket" ]; then
+			# 截断日志防止无限增长
+			true > /tmp/upload/websocketd.log 2>/dev/null || true
 			if [ -n "${SSD}" ]; then
-				"${SSD}" -S -q -b -m -p "${WS_PIDFILE}" -x /koolshare/bin/websocketd -- --port=803 /koolshare/ss/websocket >/tmp/upload/websocketd.log 2>&1
+				"${SSD}" -S -q -b -m -p "${WS_PIDFILE}" -x /koolshare/bin/websocketd -- --port=803 /koolshare/ss/websocket >>/tmp/upload/websocketd.log 2>&1
 			else
-				/koolshare/bin/websocketd --port=803 /koolshare/ss/websocket >/tmp/upload/websocketd.log 2>&1 &
+				/koolshare/bin/websocketd --port=803 /koolshare/ss/websocket >>/tmp/upload/websocketd.log 2>&1 &
 				echo $! > "${WS_PIDFILE}"
 			fi
 		fi
@@ -273,10 +275,12 @@ schedule_websocketd_after_self_update() {
 		done
 		rm -f "${WS_PIDFILE}" /tmp/fancyss_self_update_installing /tmp/fancyss_pending_websocketd_restart >/dev/null 2>&1 || true
 		if [ -x "/koolshare/bin/websocketd" ] && [ -f "/koolshare/ss/websocket" ]; then
+			# 截断日志防止无限增长
+			true > /tmp/upload/websocketd.log 2>/dev/null || true
 			if [ -n "${SSD}" ]; then
-				"${SSD}" -S -q -b -m -p "${WS_PIDFILE}" -x /koolshare/bin/websocketd -- --port=803 /koolshare/ss/websocket >/tmp/upload/websocketd.log 2>&1
+				"${SSD}" -S -q -b -m -p "${WS_PIDFILE}" -x /koolshare/bin/websocketd -- --port=803 /koolshare/ss/websocket >>/tmp/upload/websocketd.log 2>&1
 			else
-				/koolshare/bin/websocketd --port=803 /koolshare/ss/websocket >/tmp/upload/websocketd.log 2>&1 &
+				/koolshare/bin/websocketd --port=803 /koolshare/ss/websocket >>/tmp/upload/websocketd.log 2>&1 &
 				echo $! > "${WS_PIDFILE}"
 			fi
 		fi
@@ -323,6 +327,8 @@ restart_status_runtime_async() {
 	cat > "${helper}" <<-'EOF'
 		#!/bin/sh
 		LOG_FILE="/tmp/upload/status-runtime-helper.log"
+		# 截断日志防止无限增长
+		true > "${LOG_FILE}" 2>/dev/null || true
 		log_status_runtime() {
 			mkdir -p /tmp/upload
 			printf '【%s】: %s\n' "$(TZ=UTC-8 date -R "+%Y%m%d %X")" "$*" >> "${LOG_FILE}" 2>/dev/null
@@ -340,6 +346,8 @@ restart_status_runtime_async() {
 			done
 			rm -f /tmp/status-tool.sock /var/run/status-tool-serve.pid >/dev/null 2>&1
 			log_status_runtime "starting status-tool serve"
+			# 截断日志防止无限增长
+			true > /tmp/upload/status-tool-serve.log 2>/dev/null || true
 			env -i PATH="/koolshare/bin:/usr/sbin:/usr/bin:/sbin:/bin" /koolshare/bin/status-tool serve \
 				--socket-path /tmp/status-tool.sock \
 				--china-url "${chn}" \
@@ -347,7 +355,7 @@ restart_status_runtime_async() {
 				--proxy-ipv6 "${ipv6:-0}" \
 				--foreign-proxy "socks5://127.0.0.1:23456" \
 				--state-file /tmp/upload/ss_status_daemon.json \
-				--legacy-file /tmp/upload/ss_status_front.txt >/tmp/upload/status-tool-serve.log 2>&1 &
+				--legacy-file /tmp/upload/ss_status_front.txt >>/tmp/upload/status-tool-serve.log 2>&1 &
 			echo "$!" >/var/run/status-tool-serve.pid
 			sleep 1
 			if [ -S /tmp/status-tool.sock ] && ps w | grep -E '(^| )/koolshare/bin/status-tool serve( |$)' | grep -v grep >/dev/null 2>&1; then
@@ -678,12 +686,12 @@ platform_test(){
 				if [ "${ROT_ARCH}" == "armv7l" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_full或者fancyss_hnd_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				elif [ "${ROT_ARCH}" == "aarch64" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_v8_full或者fancyss_hnd_v8_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				else
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该架构！退出！"
@@ -693,7 +701,7 @@ platform_test(){
 			"44")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_qca_full或者fancyss_qca_lite！"		
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
 				exit_install 1
 				;;
 			"54")
@@ -701,17 +709,17 @@ platform_test(){
 				case "${MODEL}" in
 					"ZenWiFi_BD4")
 						echo_date "建议使用fancyss_ipq32_full或者fancyss_ipq32_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
 						exit_install 1
 						;;
 					"TUF_6500")
 						echo_date "建议使用fancyss_ipq64_full或者fancyss_ipq64_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
 						exit_install 1
 						;;
 					"TX-AX6000"|"TUF-AX4200Q"|"RT-AX57_Go"|"GS7"|"ZenWiFi_BT8P"|"GS7_Air"|"GS-BE7200X")
 						echo_date "建议使用fancyss_mtk_full或者fancyss_mtk_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
 						exit_install 1
 						;;
 					*)
@@ -739,7 +747,7 @@ platform_test(){
 					echo_date "----------------------------------------------------------------------"
 					echo_date "你的机型是${ROT_ARCH}架构，当前使用的是32位版本的fancyss！"
 					echo_date "建议使用64位的fancyss，如fancyss_hnd_v8_full或者fancyss_hnd_v8_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd_v8"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd_v8"
 					echo_date "----------------------------------------------------------------------"
 					echo_date
 					echo_date "继续安装32位的fancyss_${PKG_ARCH}_${PKG_TYPE}！"
@@ -751,13 +759,13 @@ platform_test(){
 			"26")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_arm_full或者fancyss_arm_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
 				exit_install 1
 				;;
 			"44")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_qca_full或者fancyss_qca_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
 				exit_install 1
 				;;
 			"54")
@@ -765,17 +773,17 @@ platform_test(){
 				case "${MODEL}" in
 					"ZenWiFi_BD4")
 						echo_date "建议使用fancyss_ipq32_full或者fancyss_ipq32_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
 						exit_install 1
 						;;
 					"TUF_6500")
 						echo_date "建议使用fancyss_ipq64_full或者fancyss_ipq64_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
 						exit_install 1
 						;;
 					"TX-AX6000"|"TUF-AX4200Q"|"RT-AX57_Go"|"GS7"|"ZenWiFi_BT8P"|"GS7_Air"|"GS-BE7200X")
 						echo_date "建议使用fancyss_mtk_full或者fancyss_mtk_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
 						exit_install 1
 						;;
 					*)
@@ -799,7 +807,7 @@ platform_test(){
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该架构！"
 					echo_date "原因：无法在32位的路由器上使用64位程序的fancyss_${PKG_ARCH}_${PKG_TYPE}！"
 					echo_date "建议使用fancyss_hnd_full或者fancyss_hnd_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					echo_date "退出安装！"
 					exit_install 1
 				elif [ "${ROT_ARCH}" = "aarch64" ]; then
@@ -812,13 +820,13 @@ platform_test(){
 			"26")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_arm_full或者fancyss_arm_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
 				exit_install 1
 				;;
 			"44")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_qca_full或者fancyss_qca_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
 				exit_install 1
 				;;
 			"54")
@@ -826,17 +834,17 @@ platform_test(){
 				case "${MODEL}" in
 					"ZenWiFi_BD4")
 						echo_date "建议使用fancyss_ipq32_full或者fancyss_ipq32_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
 						exit_install 1
 						;;
 					"TUF_6500")
 						echo_date "建议使用fancyss_ipq64_full或者fancyss_ipq64_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
 						exit_install 1
 						;;
 					"TX-AX6000"|"TUF-AX4200Q"|"RT-AX57_Go"|"GS7"|"ZenWiFi_BT8P"|"GS7_Air"|"GS-BE7200X")
 						echo_date "建议使用fancyss_mtk_full或者fancyss_mtk_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
 						exit_install 1
 						;;
 					*)
@@ -861,19 +869,19 @@ platform_test(){
 			"26")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_arm_full或者fancyss_arm_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
 				exit_install 1
 				;;
 			"41"|"419")
 				if [ "${ROT_ARCH}" = "armv7l" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_full或者fancyss_hnd_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				elif [ "${ROT_ARCH}" = "aarch64" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_v8_full或者fancyss_hnd_v8_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				else
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该架构！退出！"
@@ -885,17 +893,17 @@ platform_test(){
 				case "${MODEL}" in
 					"ZenWiFi_BD4")
 						echo_date "建议使用fancyss_ipq32_full或者fancyss_ipq32_lite！"
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
 						exit_install 1
 						;;
 					"TUF_6500")
 						echo_date "建议使用fancyss_ipq64_full或者fancyss_ipq64_lite！"
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
 						exit_install 1
 						;;
 					"TX-AX6000"|"TUF-AX4200Q"|"RT-AX57_Go"|"GS7"|"ZenWiFi_BT8P"|"GS7_Air"|"GS-BE7200X")
 						echo_date "建议使用fancyss_mtk_full或者fancyss_mtk_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
 						exit_install 1
 						;;
 					*)
@@ -918,12 +926,12 @@ platform_test(){
 				case "${MODEL}" in
 					"ZenWiFi_BD4")
 						echo_date "建议使用fancyss_ipq32_full或者fancyss_ipq32_lite！"	
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
 						exit_install 1
 						;;
 					"TUF_6500")
 						echo_date "建议使用fancyss_ipq64_full或者fancyss_ipq64_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
 						exit_install 1
 						;;
 					"TX-AX6000"|"TUF-AX4200Q"|"RT-AX57_Go"|"GS7"|"ZenWiFi_BT8P"|"GS7_Air"|"GS-BE7200X")
@@ -938,19 +946,19 @@ platform_test(){
 			"26")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_arm_full或者fancyss_arm_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
 				exit_install 1
 				;;
 			"41"|"419")
 				if [ "${ROT_ARCH}" == "armv7l" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_full或者fancyss_hnd_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				elif [ "${ROT_ARCH}" == "aarch64" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_v8_full或者fancyss_hnd_v8_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				else
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该架构！退出！"
@@ -960,7 +968,7 @@ platform_test(){
 			"44")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_hnd_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_qca_full或者fancyss_qca_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
 				exit_install 1
 				;;
 			*)
@@ -980,12 +988,12 @@ platform_test(){
 						;;
 					"TUF_6500")
 						echo_date "建议使用fancyss_ipq64_full或者fancyss_ipq64_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq64"
 						exit_install 1
 						;;
 					"TX-AX6000"|"TUF-AX4200Q"|"RT-AX57_Go"|"GS7"|"ZenWiFi_BT8P"|"GS7_Air"|"GS-BE7200X")
 						echo_date "建议使用fancyss_mtk_full或者fancyss_mtk_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
 						exit_install 1
 						;;
 					*)
@@ -997,19 +1005,19 @@ platform_test(){
 			"26")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_arm_full或者fancyss_arm_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
 				exit_install 1
 				;;
 			"41"|"419")
 				if [ "${ROT_ARCH}" = "armv7l" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_full或者fancyss_hnd_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				elif [ "${ROT_ARCH}" = "aarch64" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_v8_full或者fancyss_hnd_v8_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				else
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该架构！退出！"
@@ -1019,7 +1027,7 @@ platform_test(){
 			"44")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_hnd_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_qca_full或者fancyss_qca_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
 				exit_install 1
 				;;
 			*)
@@ -1036,7 +1044,7 @@ platform_test(){
 				case "${MODEL}" in
 					"ZenWiFi_BD4")
 						echo_date "建议使用fancyss_ipq32_full或者fancyss_ipq32_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_ipq32"
 						exit_install 1
 						;;
 					"TUF_6500")
@@ -1044,7 +1052,7 @@ platform_test(){
 						;;
 					"TX-AX6000"|"TUF-AX4200Q"|"RT-AX57_Go"|"GS7"|"ZenWiFi_BT8P"|"GS7_Air"|"GS-BE7200X")
 						echo_date "建议使用fancyss_mtk_full或者fancyss_mtk_lite！"		
-						echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
+						# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_mtk"
 						exit_install 1
 						;;
 					*)
@@ -1056,19 +1064,19 @@ platform_test(){
 			"26")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_arm_full或者fancyss_arm_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_arm"
 				exit_install 1
 				;;
 			"41"|"419")
 				if [ "${ROT_ARCH}" = "armv7l" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_full或者fancyss_hnd_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				elif [ "${ROT_ARCH}" = "aarch64" ]; then
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该内核版本！"
 					echo_date "建议使用fancyss_hnd_v8_full或者fancyss_hnd_v8_lite！"
-					echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
+					# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_hnd"
 					exit_install 1
 				else
 					echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_${PKG_ARCH}_${PKG_TYPE}不适用于该架构！退出！"
@@ -1078,7 +1086,7 @@ platform_test(){
 			"44")
 				echo_date "内核：${KEL_VERS}，架构：${ROT_ARCH}，fancyss_hnd_${PKG_TYPE}不适用于该内核版本！"
 				echo_date "建议使用fancyss_qca_full或者fancyss_qca_lite！"
-				echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
+				# echo_date "下载地址：https://github.com/hq450/fancyss_history_package/tree/master/fancyss_qca"
 				exit_install 1
 				;;
 			*)

@@ -64,18 +64,43 @@ append_status_log_line() {
 	printf '%s\n' "${line}" >> "${streamfile}"
 }
 
+clean_stream_log() {
+	local streamfile="$1"
+	local max_lines="${2:-2000}"
+	[ -f "${streamfile}" ] || return 0
+	local line_count
+	line_count=$(wc -l < "${streamfile}" 2>/dev/null || echo 0)
+	[ "${line_count}" -le "${max_lines}" ] && return 0
+	# 保留最后 300 行，防止无限增长
+	# 注意：不能用 sed -i 或 mv，它们会改变 inode，导致 tail -f 读取中断
+	# 必须使用 cat > 写入同一文件（保持同一 inode），tail -f 才能继续读取
+	local keep=300
+	local tmp_file="${streamfile}.tmp"
+	tail -n ${keep} "${streamfile}" > "${tmp_file}" 2>/dev/null || return 0
+	cat "${tmp_file}" > "${streamfile}" 2>/dev/null
+	rm -f "${tmp_file}" 2>/dev/null
+}
+
 clean_f_log() {
-	[ $(wc -l "$LOGFILE_F" | awk '{print $1}') -le "$LOG_MAX" ] && return
-	local logdata=$(tail -n 500 "$LOGFILE_F")
-	echo "$logdata" > $LOGFILE_F 2> /dev/null
-	unset logdata
+	# 优化：使用 wc -l < 避免 fork awk，使用临时文件避免读入内存
+	local line_count=$(wc -l < "$LOGFILE_F" 2>/dev/null || echo 0)
+	[ "$line_count" -le "$LOG_MAX" ] && return
+	local tmp_file="${LOGFILE_F}.tmp"
+	tail -n 300 "$LOGFILE_F" > "$tmp_file" 2>/dev/null || return
+	# 使用 cat > 写入同一文件（保持 inode），避免 tail -f 中断
+	cat "$tmp_file" > "$LOGFILE_F" 2>/dev/null
+	rm -f "$tmp_file" 2>/dev/null
 }
 
 clean_c_log() {
-	[ $(wc -l "$LOGFILE_C" | awk '{print $1}') -le "$LOG_MAX" ] && return
-	local logdata=$(tail -n 500 "$LOGFILE_C")
-	echo "$logdata" > $LOGFILE_C 2> /dev/null
-	unset logdata
+	# 优化：使用 wc -l < 避免 fork awk，使用临时文件避免读入内存
+	local line_count=$(wc -l < "$LOGFILE_C" 2>/dev/null || echo 0)
+	[ "$line_count" -le "$LOG_MAX" ] && return
+	local tmp_file="${LOGFILE_C}.tmp"
+	tail -n 300 "$LOGFILE_C" > "$tmp_file" 2>/dev/null || return
+	# 使用 cat > 写入同一文件（保持 inode），避免 tail -f 中断
+	cat "$tmp_file" > "$LOGFILE_C" 2>/dev/null
+	rm -f "$tmp_file" 2>/dev/null
 }
 
 LOGM() {
@@ -366,22 +391,27 @@ main(){
 		eval $(dbus export ss_failover)
 		[ "${ss_failover_enable}" != "1" ] && exit
 		LOG_MAX=${ss_failover_s5}
-		[ -z "${LOG_MAX}" ] && LOG_MAX=2000
+		[ -z "${LOG_MAX}" ] && LOG_MAX=1000
 		
 		# clean clog incase of log grow too big
 		if [ -f "/tmp/upload/ssf_status.txt" ];then
 			clean_f_log
 			clean_c_log
 		fi
+
+		# clean stream logs to prevent unbounded growth
+		clean_stream_log "${LOGSTREAM_F}" "${LOG_MAX}"
+		clean_stream_log "${LOGSTREAM_C}" "${LOG_MAX}"
 		
 		# exit loop when fancyss not enabled
 		[ "$(dbus get ss_basic_enable)" != "1" ] && exit
 		
-		if ! ps | grep -E "/koolshare/bin/status-tool daemon" | grep -v grep >/dev/null 2>&1; then
+		if ! pidof status-tool >/dev/null 2>&1; then
 			sh /koolshare/scripts/ss_status_daemon.sh restart >/dev/null 2>&1
 		fi
 
-		if [ "$(ps|grep ssconfig.sh|grep -v grep)" ];then
+		# 优化：使用 ps | grep 检测 shell 脚本（pidof 不支持 shell 脚本）
+		if ps w | grep -F "sh /koolshare/ss/ssconfig.sh" | grep -v grep >/dev/null 2>&1; then
 			# wait until ssconfig.sh finished running
 			echo ${LOGTIME1} ssconfig.sh running "[$(get_node_name_by_id "$(fss_get_current_node_id)")]" >> $LOGFILE_F
 			#continue
@@ -395,8 +425,12 @@ main(){
 		# conter
 		let COUNT++
 		
-		# random sleep $(_get_interval) time
-		local INTER=$(shuf -i $(_get_interval) -n 1)
+		# random sleep $(_get_interval) time - 优化：使用 /dev/urandom 替代 shuf 减少 fork
+		local RANGE=$(_get_interval)
+		local MIN=${RANGE%-*}
+		local MAX=${RANGE#*-}
+		local SPAN=$((MAX - MIN + 1))
+		local INTER=$(( $(head -c4 /dev/urandom | od -An -tu4 | tr -d ' ') % SPAN + MIN ))
 		INTER=$((${INTER} * 1000))
 		#echo $LOGTIME1 $INTER >> /tmp/inter.txt
 		usleep ${INTER}

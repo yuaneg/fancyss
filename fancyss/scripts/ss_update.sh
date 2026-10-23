@@ -5,7 +5,7 @@
 source /koolshare/scripts/ss_base.sh
 mkdir -p /tmp/upload
 alias echo_date='echo 【$(TZ=UTC-8 date -R +%Y%m%d\ %X)】:'
-main_url="https://raw.githubusercontent.com/hq450/fancyss/3.0/packages"
+# 已禁用在线更新：main_url="https://raw.githubusercontent.com/hq450/fancyss/3.0/packages"
 
 # --------------------------------------
 # 6.x.4708			2.6.36.4		arm
@@ -48,6 +48,13 @@ restart_websocketd_after_update(){
 }
 
 update_ss(){
+	echo_date "⚠️ 此版本为定制版本，已禁用在线更新功能！"
+	echo_date "版本号：$(cat /koolshare/ss/version 2>/dev/null || echo unknown)"
+	echo_date "如需更新，请手动下载对应的安装包进行安装。"
+	echo "XU6J03M6"
+	exit 0
+
+	# 以下为原始更新逻辑，已禁用
 	echo_date "更新过程中请不要刷新本页面或者关闭路由等，不然可能导致问题！"
 	echo_date "检查科学上网插件更新，使用主服务器：github"
 	echo_date "检测主服务器在线版本号..."

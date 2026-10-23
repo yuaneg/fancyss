@@ -126,6 +126,8 @@ start_status_serve() {
 		printf 'foreign_url=%s\n' "${frn_url}"
 		printf 'proxy_ipv6=%s\n' "${proxy_ipv6:-0}"
 	} > "${STATUS_SERVE_ARGS_FILE}" 2>/dev/null
+	# 截断日志防止无限增长
+	true > /tmp/upload/status-tool-serve.log 2>/dev/null || true
 	env TZ="$(status_tool_tz)" start-stop-daemon -S -q -b -m -p "${STATUS_SERVE_PIDFILE}" -x "${STATUS_TOOL_BIN}" -- serve \
 		--socket-path "${STATUS_SERVE_SOCKET}" \
 		--china-url "${chn_url}" \
@@ -133,7 +135,7 @@ start_status_serve() {
 		--proxy-ipv6 "${proxy_ipv6:-0}" \
 		--foreign-proxy "socks5://127.0.0.1:23456" \
 		--state-file "${STATUS_DAEMON_STATE}" \
-		--legacy-file "${STATUS_DAEMON_LEGACY}" >/tmp/upload/status-tool-serve.log 2>&1
+		--legacy-file "${STATUS_DAEMON_LEGACY}" >>/tmp/upload/status-tool-serve.log 2>&1
 	sleep 1
 	if [ -f "${STATUS_SERVE_PIDFILE}" ] && [ -S "${STATUS_SERVE_SOCKET}" ];then
 		return 0

@@ -750,10 +750,16 @@ prepare_system() {
 	# 6. set_ulimit
 	ulimit -n 16384
 
-	# 7. clean mem
-	echo 1 >/proc/sys/vm/overcommit_memory
+	# 7. memory management - use heuristic mode to prevent OOM
+	# 0 = heuristic (default, safer than 1), 1 = always overcommit (dangerous), 2 = strict (may fail on low memory)
+	echo 0 >/proc/sys/vm/overcommit_memory
 
-	# 8. more entropy
+	# 8. clean memory before starting heavy processes
+	# drop caches to free up memory for xray startup
+	sync
+	echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+	# 9. more entropy
 	# use command `cat /proc/sys/kernel/random/entropy_avail` to check current entropy
 	# few scenario should be noticed below:
 	# 1. from merlin fw 386.2, jitterentropy-rngd has been intergrated into fw, so haveged form fancyss should not be used
@@ -1245,6 +1251,16 @@ kill_process() {
 		# 有时候killall杀不了v2ray进程，所以用不同方式杀两次
 		killall v2ray >/dev/null 2>&1
 		kill -9 "$v2ray_process" >/dev/null 2>&1
+	fi
+
+	# 停止 xray 内存监控（使用 PID 文件，兼容 BusyBox）
+	if [ -f "/var/run/ss_xray_mem_watch.pid" ]; then
+		local watch_pid
+		watch_pid=$(cat /var/run/ss_xray_mem_watch.pid 2>/dev/null)
+		if [ -n "${watch_pid}" ]; then
+			kill -9 "${watch_pid}" >/dev/null 2>&1 || true
+		fi
+		rm -f /var/run/ss_xray_mem_watch.pid >/dev/null 2>&1 || true
 	fi
 
 	local xray_process=$(pidof xray)
@@ -4694,12 +4710,33 @@ start_xray() {
 	if [ "$(get_runtime_proxy_mode)" = "7" ] && type fss_shunt_xray_asset_dir >/dev/null 2>&1; then
 		xray_asset_dir="$(fss_shunt_xray_asset_dir 2>/dev/null || true)"
 	fi
+
+	# 启动前清理内存，防止 OOM
+	sync
+	echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+	local avail_mem=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+	if [ "${avail_mem}" -lt 102400 ] && [ "${avail_mem}" -gt 0 ]; then
+		echo_date "⚠️ 可用内存低于 100MB (${avail_mem}KB)，清理缓存..."
+		# 发送 USR2 信号刷新 dnsmasq DNS 缓存（HUP 只重载配置，USR2 才清缓存）
+		killall -USR2 dnsmasq 2>/dev/null || true
+		sleep 1
+		sync
+		echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+	fi
+
+	# 限制 xray 内存使用，防止 OOM 导致路由器重启（降低到 60MiB 更安全）
+	local xray_mem_limit="GOMEMLIMIT=60MiB"
 	if [ -n "${xray_asset_dir}" ]; then
-		run_bg env "xray.location.asset=${xray_asset_dir}" /koolshare/bin/xray run -c /koolshare/ss/xray.json
+		run_bg env "xray.location.asset=${xray_asset_dir}" "${xray_mem_limit}" /koolshare/bin/xray run -c /koolshare/ss/xray.json
 	else
-		run_bg /koolshare/bin/xray run -c /koolshare/ss/xray.json
+		run_bg env "${xray_mem_limit}" /koolshare/bin/xray run -c /koolshare/ss/xray.json
 	fi
 	detect_running_status3 xray 23456 0 force
+
+	# 启动 xray 内存监控（防止长期运行后内存泄漏导致 OOM）
+	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
+		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
+	fi
 }
 
 creat_trojan_json(){
@@ -4829,8 +4866,19 @@ start_trojan(){
 
 	echo_date "开启Xray主进程，用以运行trojan协议节点..."
 	cd /koolshare/bin
-	run_bg /koolshare/bin/xray run -c $TROJAN_CONFIG_FILE
+
+	# 启动前清理内存，防止 OOM
+	sync
+	echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+	# 限制 xray 内存使用，防止 OOM 导致路由器重启
+	run_bg env "GOMEMLIMIT=60MiB" /koolshare/bin/xray run -c $TROJAN_CONFIG_FILE
 	detect_running_status3 xray 23456 0 force
+
+	# 启动 xray 内存监控
+	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
+		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
+	fi
 }
 
 creat_hy2_json(){
@@ -5009,8 +5057,19 @@ start_hy2(){
 
 	echo_date "开启Xray主进程，用以运行hysteria2协议节点..."
 	cd /koolshare/bin
-	run_bg /koolshare/bin/xray run -c $HY2_CONFIG_FILE
+
+	# 启动前清理内存，防止 OOM
+	sync
+	echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+	# 限制 xray 内存使用，防止 OOM 导致路由器重启
+	run_bg env "GOMEMLIMIT=60MiB" /koolshare/bin/xray run -c $HY2_CONFIG_FILE
 	detect_running_status3 xray 23456 0 force
+
+	# 启动 xray 内存监控
+	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
+		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
+	fi
 }
 
 
@@ -6146,7 +6205,8 @@ load_iptables() {
 			echo_date "错误：不能正确加载nat规则!"
 			close_in_five
 		fi
-		usleep 100000
+		# 优化：将循环间隔从 0.1s 增加到 0.2s，减少 iptables fork 次数（折中方案）
+		usleep 200000
 		local nat_ready=$(iptables -t nat -L PREROUTING -v -n --line-numbers | grep -v PREROUTING | grep -v destination)
 	done
 	# creat_ipset
@@ -6157,6 +6217,69 @@ load_iptables() {
 		flush_ipset
 		close_in_five flag
 	fi
+}
+
+# =============== Batch iptables restore (reduce fork during startup) ===============
+# 批量 iptables 规则写入机制：将链创建和规则添加收集到临时文件，
+# 最后通过 iptables-restore 一次性加载，大幅减少进程 fork 次数。
+# 原来每条规则需要 fork 2次（-C 检查 + -A 添加），现在只需 2次 restore。
+
+batch_iptables_start() {
+	rm -f /tmp/fss_batch_v4_chains /tmp/fss_batch_v4_rules \
+	      /tmp/fss_batch_v6_chains /tmp/fss_batch_v6_rules 2>/dev/null
+	FSS_BATCH_MODE="${1:-4}"
+}
+
+batch_iptables_commit() {
+	local ver="${FSS_BATCH_MODE:-4}"
+	local chains_file="/tmp/fss_batch_v${ver}_chains"
+	local rules_file="/tmp/fss_batch_v${ver}_rules"
+	local restore_cmd="iptables-restore"
+	[ "$ver" = "6" ] && restore_cmd="ip6tables-restore"
+	if [ -s "$chains_file" ]; then
+		$restore_cmd -n < "$chains_file" >/dev/null 2>&1
+	fi
+	if [ -s "$rules_file" ]; then
+		$restore_cmd -n < "$rules_file" >/dev/null 2>&1
+	fi
+	rm -f "$chains_file" "$rules_file" 2>/dev/null
+	FSS_BATCH_MODE=""
+}
+
+batch_ensure_chain() {
+	local table="$1"
+	local chain="$2"
+	local ver="${FSS_BATCH_MODE:-4}"
+	local chains_file="/tmp/fss_batch_v${ver}_chains"
+	if ! grep -qF -- "-N $chain" "$chains_file" 2>/dev/null; then
+		echo "-t $table -N $chain" >> "$chains_file"
+	fi
+}
+
+batch_ensure_chain6() {
+	local table="$1"
+	local chain="$2"
+	local ver="${FSS_BATCH_MODE:-6}"
+	local chains_file="/tmp/fss_batch_v${ver}_chains"
+	if ! grep -qF -- "-N $chain" "$chains_file" 2>/dev/null; then
+		echo "-t $table -N $chain" >> "$chains_file"
+	fi
+}
+
+batch_append_rule() {
+	local table="$1"
+	local ver="${FSS_BATCH_MODE:-4}"
+	local rules_file="/tmp/fss_batch_v${ver}_rules"
+	shift
+	echo "-t $table $*" >> "$rules_file"
+}
+
+batch_append_rule6() {
+	local table="$1"
+	local ver="${FSS_BATCH_MODE:-6}"
+	local rules_file="/tmp/fss_batch_v${ver}_rules"
+	shift
+	echo "-t $table $*" >> "$rules_file"
 }
 
 ensure_chain() {
@@ -7398,10 +7521,12 @@ start_ws(){
 	if [ -z "${active_ws_pid}" ] && [ -x "/koolshare/bin/websocketd" -a -f "/koolshare/ss/websocket" ];then
 		ssd="$(pick_start_stop_daemon 2>/dev/null)"
 		rm -f "${WS_PIDFILE}" >/dev/null 2>&1 || true
+		# 截断日志防止无限增长
+		true > /tmp/upload/websocketd.log 2>/dev/null || true
 		if [ -n "${ssd}" ]; then
 			"${ssd}" -S -q -b -m -p "${WS_PIDFILE}" -x /koolshare/bin/websocketd -- --port=803 /koolshare/ss/websocket
 		else
-			/koolshare/bin/websocketd --port=803 /koolshare/ss/websocket >/tmp/upload/websocketd.log 2>&1 &
+			/koolshare/bin/websocketd --port=803 /koolshare/ss/websocket >>/tmp/upload/websocketd.log 2>&1 &
 			echo $! > "${WS_PIDFILE}"
 		fi
 	fi
@@ -7426,6 +7551,8 @@ start)
 	if [ "$ss_basic_enable" == "1" ]; then
 		logger "[软件中心]: wan-start启动科学上网插件！"
 		start_ws
+		# 截断日志防止无限增长
+		true > /tmp/upload/ss_wan_log.txt 2>/dev/null || true
 		apply_ss 2>&1 | tee -a "$LOG_FILE" | tee -a "/tmp/upload/ss_wan_log.txt"
 		echo XU6J03M6 | tee -a "$LOG_FILE"
 	else
@@ -7470,6 +7597,8 @@ start_nat)
 	if [ "$ss_basic_enable" == "1" ]; then
 		logger "[软件中心]: nat-start触发fancyss重启！"
 		true >"$LOG_FILE"
+		# 截断日志防止无限增长
+		true > /tmp/upload/ss_nat_log.txt 2>/dev/null || true
 		apply_ss_by_nat 2>&1 | tee -a "$LOG_FILE" | tee -a "/tmp/upload/ss_nat_log.txt"
 		echo XU6J03M6 | tee -a "$LOG_FILE"
 	fi

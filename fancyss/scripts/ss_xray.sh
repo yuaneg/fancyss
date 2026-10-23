@@ -12,7 +12,7 @@ run_bg(){
 	env -i PATH=${PATH} "$@" >/dev/null 2>&1 &
 }
 XRAY_CONFIG_FILE="/koolshare/ss/xray.json"
-url_main="https://raw.githubusercontent.com/hq450/fancyss/3.0/binaries/xray"
+# 已禁用在线更新：url_main="https://raw.githubusercontent.com/hq450/fancyss/3.0/binaries/xray"
 
 # arm hnd hnd_v8 qca mtk
 pkg_arch=$(dbus get ss_basic_pkg_arch)
@@ -42,6 +42,12 @@ if [ -z "${_TARGET_FILE}" ];then
 fi
 
 get_latest_version(){
+	echo_date "⚠️ 此版本为定制版本，已禁用 xray 在线更新功能！"
+	echo_date "xray 内核已内置于安装包，无需单独更新。"
+	echo_date "如需更新 xray，请下载包含最新 xray 内核的完整安装包。"
+	return 0
+
+	# 以下为原始更新逻辑，已禁用
 	local VERSION_FILE=$1
 	rm -rf /tmp/xray_latest_info.txt
 	echo_date "检测Xray最新版本..."
@@ -188,11 +194,12 @@ start_xray() {
 		cat >/koolshare/perp/xray/rc.main <<-EOF
 			#!/bin/sh
 			source /koolshare/scripts/base.sh
+			export GOMEMLIMIT="60MiB"
 			CMD="xray run -c /koolshare/ss/xray.json"
-			
+
 			exec 2>&1
 			exec \$CMD
-			
+
 		EOF
 		chmod +x /koolshare/perp/xray/rc.main
 		chmod +t /koolshare/perp/xray/
@@ -200,7 +207,13 @@ start_xray() {
 	else
 		echo_date "开启Xray主进程..."
 		cd /koolshare/bin
-		run_bg xray run -c $XRAY_CONFIG_FILE
+
+		# 启动前清理内存，防止 OOM
+		sync
+		echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+		# 限制 xray 内存使用，防止 OOM 导致路由器重启
+		run_bg env "GOMEMLIMIT=60MiB" xray run -c $XRAY_CONFIG_FILE
 	fi
 	local XPID
 	local i=25
@@ -214,6 +227,11 @@ start_xray() {
 		usleep 250000
 	done
 	echo_date Xray启动成功，pid：$XPID
+
+	# 启动 xray 内存监控（统一在 xray 启动成功后启动一次，避免重复）
+	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
+		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
+	fi
 }
 
 case $2 in

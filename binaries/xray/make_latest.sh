@@ -33,11 +33,32 @@ esac
 echo "-----------------------------------------------------------------"
 
 # prepare golang (local toolchain under .build_xray/)
-GO_TARBALL="${base_dir}/go${GO_VERSION}.linux-amd64.tar.gz"
+# Detect host OS for Go toolchain
+case "$(uname -s)" in
+    Darwin)
+        case "$(uname -m)" in
+            arm64|aarch64) GO_HOST="darwin-arm64" ;;
+            *) GO_HOST="darwin-amd64" ;;
+        esac
+        ;;
+    Linux)
+        case "$(uname -m)" in
+            x86_64|amd64) GO_HOST="linux-amd64" ;;
+            aarch64|arm64) GO_HOST="linux-arm64" ;;
+            *) GO_HOST="linux-amd64" ;;
+        esac
+        ;;
+    *)
+        echo "Unsupported host OS: $(uname -s)" >&2
+        exit 1
+        ;;
+esac
+
+GO_TARBALL="${base_dir}/go${GO_VERSION}.${GO_HOST}.tar.gz"
 if [ ! -x "${base_dir}/go/bin/go" ] || ! "${base_dir}/go/bin/go" version 2>/dev/null | grep -q "go${GO_VERSION} "; then
 	rm -rf "${base_dir}/go"
 	[ ! -f "${GO_TARBALL}" ] && \
-		wget "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" -O "${GO_TARBALL}"
+		wget "https://dl.google.com/go/go${GO_VERSION}.${GO_HOST}.tar.gz" -O "${GO_TARBALL}"
 	tar -C "${base_dir}" -xzf "${GO_TARBALL}"
 fi
 

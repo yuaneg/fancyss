@@ -13788,20 +13788,23 @@ function updatelist(arg) {
 function version_show() {
 	if(!db_ss["ss_basic_version_local"]) db_ss["ss_basic_version_local"] = "0.0.0"
 	$("#ss_version_show").html("<a class='hintstyle' href='javascript:void(0);'><i>当前版本：" + db_ss['ss_basic_version_local'] + "</i></a>");
-	$.ajax({
-		url: 'https://raw.githubusercontent.com/hq450/fancyss/3.0/packages/version.json.js',
-		type: 'GET',
-		dataType: 'json',
-		success: function(res) {
-			if (typeof(res["version"]) != "undefined" && res["version"].length > 0) {
-				if (versionCompare(res["version"], db_ss["ss_basic_version_local"])) {
-					$("#updateBtn").html("<i>升级到：" + res.version + "</i>");
-				}
-			}
-		}
-	});
+	// 已禁用在线更新检查
+	// $.ajax({
+	// 	url: 'https://raw.githubusercontent.com/hq450/fancyss/3.0/packages/version.json.js',
+	// 	type: 'GET',
+	// 	dataType: 'json',
+	// 	success: function(res) {
+	// 		if (typeof(res["version"]) != "undefined" && res["version"].length > 0) {
+	// 			if (versionCompare(res["version"], db_ss["ss_basic_version_local"])) {
+	// 				$("#updateBtn").html("<i>升级到：" + res.version + "</i>");
+	// 			}
+	// 		}
+	// 	}
+	// });
 }
 function message_show() {
+	// 已禁用在线消息和广告加载
+	return;
 	if (db_ss["ss_close_mesg"] == "0") return
 	$.ajax({
 		url: 'https://gist.githubusercontent.com/hq450/001dd0617a64e11a9492dcf9205a0e03/raw/fancyss_msg.json?_=' + new Date().getTime(),
@@ -13890,9 +13893,14 @@ function scroll_msg() {
 	}
 }
 function update_ss() {
+	// 已禁用在线更新
+	alert("此版本为定制版本（" + (dbus["ss_basic_version_local"] || "unknown") + "），已禁用在线更新功能！\n如需更新，请手动下载对应的安装包进行安装。");
+	return;
+	/*
 	var dbus_post = {};
 	db_ss["ss_basic_action"] = "7";
 	push_data("ss_update.sh", "update", dbus_post);
+	*/
 }
 
 function tabSelect(w) {
@@ -16303,6 +16311,10 @@ function save_online_nodes(action) {
 	push_subscription_data(action, dbus_post, action == "4" ? "分享链接导入日志" : "订阅更新日志", "", true);
 }
 function xray_binary_update(){
+	// 已禁用 xray 二进制在线更新
+	alert("此版本为定制版本，已禁用 xray 在线更新功能！\nxray 内核已内置于安装包，无需单独更新。\n如需更新，请下载包含最新 xray 内核的完整安装包。");
+	return;
+	/*
 	var dbus_post = {};
 	db_ss["ss_basic_action"] = "15";
 	note = "<li style='line-height:32px'>xray二进制来自于fancyss项目编译压缩：<a style='color:#22ab39;' href='https://github.com/hq450/fancyss/tree/3.0/binaries/xray' target='_blank'>https://github.com/hq450/fancyss/tree/3.0/binaries/xray</a></li>";
@@ -16325,6 +16337,7 @@ function xray_binary_update(){
 			layer.closeAll();
 		}
 	});
+	*/
 }
 function set_cron(action) {
 	var dbus_post = {};
@@ -16598,16 +16611,13 @@ function toggleKeyMask(o, show){
 																</label>
 															</div>
 															<div id="update_button" style="display:table-cell;float: left;position: absolute;margin-left:70px;padding: 5.5px 0px;">
-																<a id="updateBtn" type="button" class="ss_btn" style="cursor:pointer" onclick="update_ss()">检查并更新</a>
+																<!--<a id="updateBtn" type="button" class="ss_btn" style="cursor:pointer" onclick="update_ss()">检查并更新</a>-->
 															</div>
 															<div id="ss_version_show" style="display:table-cell;float: left;position: absolute;margin-left:170px;padding: 5.5px 0px;">
 																<a><i>当前版本：</i></a>
 															</div>
 															<div style="display:table-cell;float: left;margin-left:270px;position: absolute;padding: 5.5px 0px;">
 																<a type="button" class="ss_btn" target="_blank" href="https://github.com/hq450/fancyss/blob/3.0/Changelog.txt">更新日志</a>
-															</div>
-															<div style="display:table-cell;float: left;margin-left:350px;position: absolute;padding: 5.5px 0px;">
-																<a type="button" class="ss_btn" href="javascript:void(0);" onclick="pop_help()">插件帮助</a>
 															</div>
 														</td>
 													</tr>
@@ -16626,7 +16636,6 @@ function toggleKeyMask(o, show){
 															</div>
 															<div style="display:table-cell;float: left;margin-left:270px;position: absolute;padding: 10.5px 0px;">
 																<!--<a type="button" class="ss_btn" style="cursor:pointer" onclick="pop_111(3)" href="javascript:void(0);">分流检测</a>-->
-																<a type="button" class="ss_btn" target="https://ip.skk.moe/" href="https://ip.skk.moe/">分流检测</a>
 															</div>
 															<div style="display:table-cell;float: left;margin-left:350px;position: absolute;padding: 10.5px 0px;">
 																<a type="button" class="ss_btn" style="cursor:pointer" onclick="get_proc_status()" href="javascript:void(0);">详细状态</a>
@@ -16876,7 +16885,7 @@ function toggleKeyMask(o, show){
 															{ title: '* shortId', id:'ss_basic_xray_shortid', data:{show:'xray_on x_json_off x_real_on'}, type:'text', ph:'没有请留空'},
 															{ title: '* spiderX', id:'ss_basic_xray_spiderx', data:{show:'xray_on x_json_off x_real_on'}, type:'text', ph:'没有请留空'},
 															{ title: 'xray json', id:'ss_basic_xray_json', data:{show:'xray_on x_json_on'}, type:'textarea', rows:'36', ph:ph_xray},
-															{ title: '其它', rid:'xray_binary_update_tr', data:{show:'xray_on'}, prefix: '<a type="button" class="ss_btn" style="cursor:pointer" onclick="xray_binary_update(2)">更新xray程序</a>'},
+// 已禁用：															// { title: '其它', rid:'xray_binary_update_tr', data:{show:'xray_on'}, prefix: '<a type="button" class="ss_btn" style="cursor:pointer" onclick="xray_binary_update(2)">更新xray程序</a>'},
 															//trojan
 															{ title: 'trojan 密码', id:'ss_basic_trojan_uuid', data:{show:'trojan_on'}, type:'password', maxlen:'300', style:'width:280px;', peekaboo:'1'},
 															{ title: '跳过证书验证 (AllowInsecure)', id:'ss_basic_trojan_ai', data:{show:'trojan_on'}, type:'checkbox', func:'v', suffix: render_allow_insecure_notice('trojan_on trojan_ai_on')},
@@ -17453,9 +17462,9 @@ function toggleKeyMask(o, show){
 															{ title: '规则手动更新', multi: [
 																{ suffix:'<a type="button" class="ss_btn" style="cursor:pointer" onclick="updatelist(2)">立即更新规则</a>'},
 															]},
-															{ title: '二进制更新', multi: [
-																{ suffix: '<a type="button" class="ss_btn" style="cursor:pointer" onclick="xray_binary_update(2)">更新xray程序</a>&nbsp;'},
-															]},
+// 已禁用：															// { title: '二进制更新', multi: [
+// 已禁用：																// { suffix: '<a type="button" class="ss_btn" style="cursor:pointer" onclick="xray_binary_update(2)">更新xray程序</a>&nbsp;'},
+// 已禁用：															// ]},
 														]);
 													</script>
 												</table>
