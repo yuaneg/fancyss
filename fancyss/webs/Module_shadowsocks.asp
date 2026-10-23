@@ -16520,7 +16520,6 @@ function toggleKeyMask(o, show){
 														、<a href="https://github.com/apernet/hysteria" target="_blank"><em><u>Hysteria2</u></em></a>
 														、<a href="https://github.com/anytls/anytls-go" target="_blank"><em><u>AnyTLS</u></em></a>				<!--fancyss-full-->
 														的科学上网工具。
-														<a href="https://t.me/joinchat/AAAAAEC7pgV9vPdPcJ4dJw" target="_blank"><em>Telegram交流群</em></a>
 													</li>
 												</ul>
 												<ul id="scroll_msg" style="padding:0;margin:0;line-height:1.8;overflow: hidden;">
@@ -16613,10 +16612,10 @@ function toggleKeyMask(o, show){
 															<div id="update_button" style="display:table-cell;float: left;position: absolute;margin-left:70px;padding: 5.5px 0px;">
 																<!--<a id="updateBtn" type="button" class="ss_btn" style="cursor:pointer" onclick="update_ss()">检查并更新</a>-->
 															</div>
-															<div id="ss_version_show" style="display:table-cell;float: left;position: absolute;margin-left:170px;padding: 5.5px 0px;">
+															<div id="ss_version_show" style="display:table-cell;float: left;position: absolute;margin-left:120px;padding: 5.5px 0px;">
 																<a><i>当前版本：</i></a>
 															</div>
-															<div style="display:table-cell;float: left;margin-left:270px;position: absolute;padding: 5.5px 0px;">
+															<div style="display:table-cell;float: left;margin-left:240px;position: absolute;padding: 5.5px 0px;">
 																<a type="button" class="ss_btn" target="_blank" href="https://github.com/hq450/fancyss/blob/3.0/Changelog.txt">更新日志</a>
 															</div>
 														</td>
@@ -16634,10 +16633,10 @@ function toggleKeyMask(o, show){
 																	<span id="ss_state_tip" style="display:none;color:#FFB300;font-size:11px;padding-top:2px;"></span>
 																</a>
 															</div>
-															<div style="display:table-cell;float: left;margin-left:270px;position: absolute;padding: 10.5px 0px;">
+															<div style="display:table-cell;float: left;margin-left:240px;position: absolute;padding: 10.5px 0px;">
 																<!--<a type="button" class="ss_btn" style="cursor:pointer" onclick="pop_111(3)" href="javascript:void(0);">分流检测</a>-->
 															</div>
-															<div style="display:table-cell;float: left;margin-left:350px;position: absolute;padding: 10.5px 0px;">
+															<div style="display:table-cell;float: left;margin-left:240px;position: absolute;padding: 10.5px 0px;">
 																<a type="button" class="ss_btn" style="cursor:pointer" onclick="get_proc_status()" href="javascript:void(0);">详细状态</a>
 															</div>
 														</td>

@@ -7,6 +7,15 @@ DESCRIPTION="科学上网"
 HOME_URL=Module_shadowsocks.asp
 CURR_PATH="$( cd "$( dirname "$BASH_SOURCE[0]" )" && pwd )"
 
+# macOS/Linux 兼容的 sed 原地编辑函数
+sed_inplace() {
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		sed -i '' "$@"
+	else
+		sed -i "$@"
+	fi
+}
+
 cp_rules(){
 	local target=${CURR_PATH}/fancyss/ss/rules/
 	cp -rf ${CURR_PATH}/rules_ng/gfwlist.gz ${target}
@@ -53,10 +62,10 @@ set_pkg_web_meta(){
 	local pkg_arch="$3"
 	local pkg_type="$4"
 	local pkg_exta="$5"
-	sed -i "s/^var PKG_NAME=.*/var PKG_NAME=\"${pkg_name}\"/" "${file_path}"
-	sed -i "s/^var PKG_ARCH=.*/var PKG_ARCH=\"${pkg_arch}\"/" "${file_path}"
-	sed -i "s/^var PKG_TYPE=.*/var PKG_TYPE=\"${pkg_type}\"/" "${file_path}"
-	sed -i "s/^var PKG_EXTA=.*/var PKG_EXTA=\"${pkg_exta}\"/" "${file_path}"
+	sed_inplace "s/^var PKG_NAME=.*/var PKG_NAME=\"${pkg_name}\"/" "${file_path}"
+	sed_inplace "s/^var PKG_ARCH=.*/var PKG_ARCH=\"${pkg_arch}\"/" "${file_path}"
+	sed_inplace "s/^var PKG_TYPE=.*/var PKG_TYPE=\"${pkg_type}\"/" "${file_path}"
+	sed_inplace "s/^var PKG_EXTA=.*/var PKG_EXTA=\"${pkg_exta}\"/" "${file_path}"
 }
 
 sync_binary(){
@@ -363,9 +372,9 @@ gen_folder(){
 		rm -rf ./shadowsocks/bin-ipq64
 		mv ./shadowsocks/bin-arm ./shadowsocks/bin
 		echo arm > ./shadowsocks/.valid
-		sed -i '/fancyss-hnd/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/ss_basic_mcore/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/ss_basic_tfo/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/fancyss-hnd/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/ss_basic_mcore/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/ss_basic_tfo/d' ./shadowsocks/webs/Module_shadowsocks.asp
 	fi
 	if [ "${platform}" == "mtk" ];then
 		rm -rf ./shadowsocks/bin-arm
@@ -430,8 +439,8 @@ gen_folder(){
 	
 	if [ "${pkgtype}" == "full" ];then
 		# remove marked comment
-		sed -i 's/#@//g' ./shadowsocks/scripts/ss_proc_status.sh
-		sed -i 's/#@//g' ./shadowsocks/scripts/ss_conf.sh
+		sed_inplace 's/#@//g' ./shadowsocks/scripts/ss_proc_status.sh
+		sed_inplace 's/#@//g' ./shadowsocks/scripts/ss_conf.sh
 	elif [ "${pkgtype}" == "lite" ];then
 		# remove binaries
 		rm -rf ./shadowsocks/bin/naive
@@ -446,79 +455,79 @@ gen_folder(){
 		rm -rf ./shadowsocks/ss/rules/chn.acl
 		rm -rf ./shadowsocks/ss/rules/gfwlist.acl
 		# remove line
-		sed -i '/fancyss-full/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/fancyss-full/d' ./shadowsocks/res/ss-menu.js
-		sed -i '/fancyss-dns/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/naiveproxy/d' ./shadowsocks/res/ss-menu.js
-		sed -i '/naiveproxy/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/，比如NaïveProxy\/AnyTLS节点//g' ./shadowsocks/res/ss-menu.js
-		sed -i '/NaïveProxy\/AnyTLS由于自身特性/d' ./shadowsocks/res/ss-menu.js
-		sed -i '/tuic/d' ./shadowsocks/res/ss-menu.js
+		sed_inplace '/fancyss-full/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/fancyss-full/d' ./shadowsocks/res/ss-menu.js
+		sed_inplace '/fancyss-dns/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/naiveproxy/d' ./shadowsocks/res/ss-menu.js
+		sed_inplace '/naiveproxy/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/，比如NaïveProxy\/AnyTLS节点//g' ./shadowsocks/res/ss-menu.js
+		sed_inplace '/NaïveProxy\/AnyTLS由于自身特性/d' ./shadowsocks/res/ss-menu.js
+		sed_inplace '/tuic/d' ./shadowsocks/res/ss-menu.js
 		# remove lines bewteen matchs
-		sed -i '/fancyss_full_1/,/fancyss_full_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/fancyss_naive_1/,/fancyss_naive_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/fancyss_tuic_1/,/fancyss_tuic_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/fancyss_anytls_1/,/fancyss_anytls_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/fancyss_full_1/,/fancyss_full_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/fancyss_naive_1/,/fancyss_naive_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/fancyss_tuic_1/,/fancyss_tuic_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/fancyss_anytls_1/,/fancyss_anytls_2/d' ./shadowsocks/webs/Module_shadowsocks.asp
 		# remove strings from page
-		sed -i '/proto-anytls/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_prot"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_server"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_port"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_user"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_pass"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_json"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"tuic_json"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"anytls_ai"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/^[[:space:]]*"9"[[:space:]]*:[[:space:]]*.*anytls_/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_prot"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_server"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_port"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_user"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_pass"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"naive_json"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"tuic_json"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"anytls_server"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"anytls_port"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"anytls_pass"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"anytls_sni"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/,[[:space:]]*"anytls_ai"//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/^[[:space:]]*"anytls_server"[[:space:]]*:/d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/、anytls:\/\/ 等链接/ 等链接/g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/\,\s\"ss_basic_vcore\"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/proto-anytls/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_prot"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_server"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_port"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_user"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_pass"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_json"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"tuic_json"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"anytls_ai"[[:space:]]*:[[:space:]]*"[^"]*"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/^[[:space:]]*"9"[[:space:]]*:[[:space:]]*.*anytls_/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_prot"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_server"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_port"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_user"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_pass"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"naive_json"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"tuic_json"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"anytls_server"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"anytls_port"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"anytls_pass"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"anytls_sni"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/,[[:space:]]*"anytls_ai"//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/^[[:space:]]*"anytls_server"[[:space:]]*:/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/、anytls:\/\/ 等链接/ 等链接/g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/\,\s\"ss_basic_vcore\"//g' ./shadowsocks/webs/Module_shadowsocks.asp
 		# modify words
 		# trojan 用xray运行，所以trojan多核心功能删除
-		sed -i 's/ss\/ssr\/trojan/ss\/ssr/g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/的科学上网工具。/九种协议的科学上网工具。/g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/九种协议/六种协议/g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/科学上网工具/科学上网、游戏加速工具/g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/11\.111/16.667/g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/\s\&\&\s\!\snaive_on//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/shadowsocks_2/shadowsocks_lite_2/g' ./shadowsocks/res/ss-menu.js
-		sed -i 's/config\.json\.js/config_lite\.json\.js/g' ./shadowsocks/res/ss-menu.js
+		sed_inplace 's/ss\/ssr\/trojan/ss\/ssr/g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/的科学上网工具。/九种协议的科学上网工具。/g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/九种协议/六种协议/g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/科学上网工具/科学上网、游戏加速工具/g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/11\.111/16.667/g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/\s\&\&\s\!\snaive_on//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/shadowsocks_2/shadowsocks_lite_2/g' ./shadowsocks/res/ss-menu.js
+		sed_inplace 's/config\.json\.js/config_lite\.json\.js/g' ./shadowsocks/res/ss-menu.js
 	fi
 
 	if [ "${release_type}" == "release" ];then
 		# 移除注释
 		# remove match words: //fancyss-full //fancyss-full_1 //fancyss-full_2
-		sed -i 's/[ \t]*\/\/fancyss-full//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/[ \t]*\/\/fancyss-full//g' ./shadowsocks/res/ss-menu.js
+		sed_inplace 's/[ \t]*\/\/fancyss-full//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/[ \t]*\/\/fancyss-full//g' ./shadowsocks/res/ss-menu.js
 
 		# remove match words: <!--fancyss-full-->
-		sed -i 's/[ \t]*<!--fancyss-full-->//g' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i 's/[ \t]*<!--fancyss-full-->//g' ./shadowsocks/res/ss-menu.js
+		sed_inplace 's/[ \t]*<!--fancyss-full-->//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/[ \t]*<!--fancyss-full-->//g' ./shadowsocks/res/ss-menu.js
 
 		# remove line contain: <!--fancyss_full_1--> <!--fancyss_full_1-->
-		sed -i 's/[ \t]*<!--fancyss_full_[1-2]-->//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/[ \t]*<!--fancyss_full_[1-2]-->//g' ./shadowsocks/webs/Module_shadowsocks.asp
 		
 		# remove line start of: //
-		sed -i '/^[ \t]*\/\//d' ./shadowsocks/webs/Module_shadowsocks.asp
-		sed -i '/^[ \t]*\/\//d' ./shadowsocks/res/ss-menu.js
+		sed_inplace '/^[ \t]*\/\//d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/^[ \t]*\/\//d' ./shadowsocks/res/ss-menu.js
 
 		# remove line <!-- ?? -->
-		sed -i 's/<!--.*-->//g' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace 's/<!--.*-->//g' ./shadowsocks/webs/Module_shadowsocks.asp
 
 		# remove empty line
-		sed -i '/^[[:space:]]*$/d' ./shadowsocks/webs/Module_shadowsocks.asp
+		sed_inplace '/^[[:space:]]*$/d' ./shadowsocks/webs/Module_shadowsocks.asp
 
 		# icon
 		rm -rf ./shadowsocks/res/icon-shadowsocks_debug.png
@@ -531,7 +540,7 @@ gen_folder(){
 	# rm -rf ./shadowsocks/bin/smartdns
 	rm -rf ./shadowsocks/ss/rules/adslist.gz
 	# rm -rf ./shadowsocks/ss/rules/smartdns_smrt*
-	# sed -i '/fancyss_todo/d' ./shadowsocks/webs/Module_shadowsocks.asp
+	# sed_inplace '/fancyss_todo/d' ./shadowsocks/webs/Module_shadowsocks.asp
 }
 
 build_pkg() {
@@ -567,7 +576,7 @@ do_backup(){
 			
 			echo "备份：fancyss_${platform}_${pkgtype}_${backup_version}.tar.gz"
 			cp ${CURR_PATH}/packages/fancyss_${platform}_${pkgtype}.tar.gz ${HISTORY_DIR}/fancyss_${platform}_${pkgtype}_${backup_version}.tar.gz
-			sed -i "/fancyss_${platform}_${pkgtype}_${backup_version}/d" ${HISTORY_DIR}/md5sum.txt
+			sed_inplace "/fancyss_${platform}_${pkgtype}_${backup_version}/d" ${HISTORY_DIR}/md5sum.txt
 			if [ ! -f ${HISTORY_DIR}/md5sum.txt ];then
 				touch ${HISTORY_DIR}/md5sum.txt
 			fi
