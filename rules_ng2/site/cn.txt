@@ -10556,7 +10556,7 @@ domain:aafanke.cc
 domain:aafxw.com
 domain:aai07251mu.com
 domain:aai07260mu.com
-domain:aai07280mu.com
+domain:aai072u.com
 domain:aakss.com
 domain:aaltosemi.com
 domain:aamets.com
@@ -38466,7 +38466,6 @@ domain:g66667777.com
 domain:g77775555.com
 domain:g77776666.com
 domain:g7bd307de.skin
-domain:g80mx.com
 domain:g82btd54.work
 domain:g88885555.com
 domain:g88886666.com
@@ -42435,6 +42434,7 @@ domain:gx-xc.com
 domain:gx-xjyx.com
 domain:gx-yidaiyilu.com
 domain:gx-zy.com
+domain:gx.com
 domain:gx10010.com
 domain:gx121.com
 domain:gx12333.net

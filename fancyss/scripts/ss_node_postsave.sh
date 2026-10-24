@@ -91,9 +91,11 @@ compact_node_ids_if_needed() {
 
 ACTION=""
 IDS=""
-# 保存 web 请求 ID（/_api/ 调用时 $1 为请求 ID，后续会被覆盖）
+# 保存 web 请求 ID（/_api/ 调用时 $1 为数字 ID，后续会被覆盖）
 _WEB_REQUEST_ID=""
-[ -n "${REQUEST_METHOD}" ] && _WEB_REQUEST_ID="$1"
+case "$1" in
+	[0-9]*)  _WEB_REQUEST_ID="$1" ;;
+esac
 
 if [ "$1" = "rebuild" ];then
 	ACTION="$1"

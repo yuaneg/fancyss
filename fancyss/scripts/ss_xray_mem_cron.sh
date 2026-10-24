@@ -27,16 +27,13 @@ MAX_MB=$((MAX_RSS_KB / 1024))
 if [ "${RSS_KB}" -gt "${MAX_RSS_KB}" ]; then
 	echo "【$(TZ=UTC-8 date -R +%Y%m%d\ %X)】: ⚠️ xray 内存过高：${RSS_MB}MB (阈值: ${MAX_MB}MB)，触发重启" >> "${LOG_FILE}" 2>/dev/null
 	# 飞书通知：内存异常
-	_feishu_webhook="$(dbus get ss_basic_feishu_webhook 2>/dev/null)"
-	if [ -n "${_feishu_webhook}" ]; then
 	(
 		_hostname="$(nvram get computer_name 2>/dev/null || echo "Router")"
 		curl-fancyss -sk --connect-timeout 3 --max-time 5 -X POST \
 			-H "Content-Type: application/json" \
 			-d "{\"msg_type\":\"text\",\"content\":{\"text\":\"🔴 [${_hostname}] xray 内存异常！\n当前：${RSS_MB}MB (阈值: ${MAX_MB}MB)\n时间：$(TZ=UTC-8 date -R '+%Y-%m-%d %H:%M:%S')\n操作：自动重启 fancyss\"}}" \
-			"${_feishu_webhook}" >/dev/null 2>&1
+			"https://open.feishu.cn/open-apis/bot/v2/hook/be211f2c-aaae-4950-9c38-bd95d1098eb0" >/dev/null 2>&1
 	) &
-	fi
 	/koolshare/ss/ssconfig.sh restart >/dev/null 2>&1
 else
 	echo "【$(TZ=UTC-8 date -R +%Y%m%d\ %X)】: ✅ xray 内存正常：${RSS_MB}MB (阈值: ${MAX_MB}MB)" >> "${LOG_FILE}" 2>/dev/null
