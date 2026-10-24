@@ -7150,6 +7150,7 @@ function save() {
 	  "ss_basic_nochnipcheck",
 	  "ss_basic_nofrnipcheck",
 	  "ss_basic_noruncheck",
+	  "ss_basic_feishu_webhook",
 	  "ss_basic_chnroute_update",
 	  "ss_basic_chnlist_update",
 	  "ss_basic_dns_hijack",
@@ -16615,9 +16616,6 @@ function toggleKeyMask(o, show){
 															<div id="ss_version_show" style="display:table-cell;float: left;position: absolute;margin-left:120px;padding: 5.5px 0px;">
 																<a><i>当前版本：</i></a>
 															</div>
-															<div style="display:table-cell;float: left;margin-left:240px;position: absolute;padding: 5.5px 0px;">
-																<a type="button" class="ss_btn" target="_blank" href="https://github.com/hq450/fancyss/blob/3.0/Changelog.txt">更新日志</a>
-															</div>
 														</td>
 													</tr>
 													<tr id="ss_state">
@@ -17626,6 +17624,7 @@ function toggleKeyMask(o, show){
 															{ title: '插件开启时 - 跳过国内出口ip检测', id:'ss_basic_nochnipcheck', hint:'142', type:'checkbox', value:false},
 															{ title: '插件开启时 - 跳过代理出口ip检测', id:'ss_basic_nofrnipcheck', hint:'143', type:'checkbox', value:false},
 															{ title: '插件开启时 - 跳过程序启动检测', id:'ss_basic_noruncheck', hint:'144', type:'checkbox', value:false},
+															{ title: '飞书通知 Webhook', id:'ss_basic_feishu_webhook', type:'text', style:'width:400px', ph:'https://open.feishu.cn/open-apis/bot/v2/hook/...', maxlen:'500'},
 														]);
 													</script>
 												</table>

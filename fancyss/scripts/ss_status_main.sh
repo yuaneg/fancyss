@@ -411,6 +411,7 @@ main(){
 		fi
 
 		# 优化：使用 ps | grep 检测 shell 脚本（pidof 不支持 shell 脚本）
+		fss_log_truncate "$LOGFILE_F"
 		if ps w | grep -F "sh /koolshare/ss/ssconfig.sh" | grep -v grep >/dev/null 2>&1; then
 			# wait until ssconfig.sh finished running
 			echo ${LOGTIME1} ssconfig.sh running "[$(get_node_name_by_id "$(fss_get_current_node_id)")]" >> $LOGFILE_F

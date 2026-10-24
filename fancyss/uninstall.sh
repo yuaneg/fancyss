@@ -33,7 +33,8 @@ remove_fancyss_cron(){
 	cru d sswebtest >/dev/null 2>&1
 	cru d fancyss_webtest >/dev/null 2>&1
 	cru d fancyss_subscribe >/dev/null 2>&1
-	sed -i '/ssconfig\.sh/d;/ss_rule_update\.sh/d;/ss_node_subscribe\.sh/d;/ss_webtest\.sh/d;/fancyss/d' /var/spool/cron/crontabs/* >/dev/null 2>&1
+	cru d xray_mem_watch >/dev/null 2>&1
+	sed -i '/ssconfig\.sh/d;/ss_rule_update\.sh/d;/ss_node_subscribe\.sh/d;/ss_webtest\.sh/d;/ss_xray_mem_cron\.sh/d;/fancyss/d' /var/spool/cron/crontabs/* >/dev/null 2>&1
 }
 
 stop_fancyss_websocketd(){

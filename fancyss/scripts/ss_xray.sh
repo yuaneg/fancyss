@@ -227,11 +227,6 @@ start_xray() {
 		usleep 250000
 	done
 	echo_date Xray启动成功，pid：$XPID
-
-	# 启动 xray 内存监控（统一在 xray 启动成功后启动一次，避免重复）
-	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
-		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
-	fi
 }
 
 case $2 in

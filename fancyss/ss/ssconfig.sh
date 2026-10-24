@@ -1253,16 +1253,6 @@ kill_process() {
 		kill -9 "$v2ray_process" >/dev/null 2>&1
 	fi
 
-	# 停止 xray 内存监控（使用 PID 文件，兼容 BusyBox）
-	if [ -f "/var/run/ss_xray_mem_watch.pid" ]; then
-		local watch_pid
-		watch_pid=$(cat /var/run/ss_xray_mem_watch.pid 2>/dev/null)
-		if [ -n "${watch_pid}" ]; then
-			kill -9 "${watch_pid}" >/dev/null 2>&1 || true
-		fi
-		rm -f /var/run/ss_xray_mem_watch.pid >/dev/null 2>&1 || true
-	fi
-
 	local xray_process=$(pidof xray)
 	if [ -n "$xray_process" ]; then
 		echo_date "关闭xray进程..."
@@ -2002,7 +1992,7 @@ EOF
 	esac
 	cat >> "${outfile}" <<-EOF
 cache-persist yes
-cache-file /tmp/smartdns_${mode}.cache
+cache-file /tmp/upload/smartdns_${mode}.cache
 prefetch-domain yes
 EOF
 	if [ "${mode}" = "3" ];then
@@ -2014,16 +2004,17 @@ EOF
 serve-expired-ttl 259200
 serve-expired-reply-ttl 3
 cache-checkpoint-time 86400
+cache-size 1000
 EOF
 	smartdns_append_ipv6_policy "${outfile}" "${mode}"
 	cat >> "${outfile}" <<-'EOF'
 force-qtype-SOA 65
 log-level info
-log-file /tmp/smartdns_log.txt
+log-file /tmp/upload/smartdns_log.txt
 log-size 2M
 log-num 1
 audit-enable yes
-audit-file /tmp/smartdns_audit.txt
+audit-file /tmp/upload/smartdns_audit.txt
 audit-size 2M
 audit-num 1
 ca-file /etc/ssl/certs/ca-certificates.crt
@@ -2057,36 +2048,48 @@ $(fss_airport_special_iter_active_tsv 2>/dev/null)
 
 start_smartdns(){
 	local idx=$1
-	local smartdns_conf=/tmp/smartdns_fancyss.conf
+	local smartdns_conf=/tmp/upload/smartdns_fancyss.conf
 
-	rm -rf /tmp/smartdns_log.txt
-	rm -rf /tmp/smartdns_audit.txt
+	rm -rf /tmp/upload/smartdns_log.txt
+	rm -rf /tmp/upload/smartdns_audit.txt
 
 	if [ "${_node_change_status}" == "1" ];then
-		if [ -f "/tmp/smartdns_${last_node_indx}.cache" ];then
+		if [ -f "/tmp/upload/smartdns_${last_node_indx}.cache" ];then
 			echo_date "smartdns缓存：检测到上次节点【${last_node_name}】上次使用的缓存，备份以备下次切换回使用。"
-			mv /tmp/smartdns_${last_node_indx}.cache /tmp/smartdns_${last_node_indx}_${last_node_hash}.cache
+			mv /tmp/upload/smartdns_${last_node_indx}.cache /tmp/upload/smartdns_${last_node_indx}_${last_node_hash}.cache
 		fi
-		if [ -f "/tmp/smartdns_${idx}_${curr_node_hash}.cache" ];then
-			echo_date "smartdns缓存：检测到节点【${ss_basic_name}】上次使用的缓存，加载到/tmp/smartdns_${idx}.cache..."
-			mv /tmp/smartdns_${idx}_${curr_node_hash}.cache /tmp/smartdns_${idx}.cache
+		if [ -f "/tmp/upload/smartdns_${idx}_${curr_node_hash}.cache" ];then
+			echo_date "smartdns缓存：检测到节点【${ss_basic_name}】上次使用的缓存，加载到/tmp/upload/smartdns_${idx}.cache..."
+			mv /tmp/upload/smartdns_${idx}_${curr_node_hash}.cache /tmp/upload/smartdns_${idx}.cache
 		else
 			echo_date "smartdns缓存：没有检测到节点【${ss_basic_name}】上次使用的缓存"
 		fi
 	elif [ "${_node_change_status}" == "0" ];then
-		if [ -f "/tmp/smartdns_${last_node_indx}.cache" ];then
+		if [ -f "/tmp/upload/smartdns_${last_node_indx}.cache" ];then
 			echo_date "smartdns缓存：检测到节点未切换，保留smartdns缓存文件..."
 		else
 			echo_date "smartdns缓存：检测到节点未切换，新建smartdns缓存文件..."
 		fi
 	elif [ "${_node_change_status}" == "2" ];then
-		if [ -f "/tmp/smartdns_${idx}_${curr_node_hash}.cache" ];then
-			echo_date "smartdns缓存：检测到节点【${ss_basic_name}】上次使用的缓存，加载到/tmp/smartdns_${idx}.cache...."
-			mv /tmp/smartdns_${idx}_${curr_node_hash}.cache /tmp/smartdns_${idx}.cache
+		if [ -f "/tmp/upload/smartdns_${idx}_${curr_node_hash}.cache" ];then
+			echo_date "smartdns缓存：检测到节点【${ss_basic_name}】上次使用的缓存，加载到/tmp/upload/smartdns_${idx}.cache...."
+			mv /tmp/upload/smartdns_${idx}_${curr_node_hash}.cache /tmp/upload/smartdns_${idx}.cache
 		else
 			echo_date "smartdns缓存：没有检测到节点【${ss_basic_name}】上次使用的缓存!"
 		fi
 	fi
+
+	# 清理旧的 smartdns 节点缓存文件，防止 /tmp 下缓存不断积累
+	# 保留当前节点和上次节点的备份（用于下次切换恢复），删除更早的备份
+	for _f in /tmp/upload/smartdns_*_*.cache; do
+		[ -f "${_f}" ] || continue
+		case "${_f}" in
+			*_${idx}_${curr_node_hash}.cache) continue ;;
+			*_${last_node_indx}_${last_node_hash}.cache) continue ;;
+		esac
+		rm -f "${_f}" >/dev/null 2>&1
+	done
+	unset _f
 
 	echo_date "生成smartdns运行时配置：${smartdns_conf}"
 	smartdns_generate_runtime_conf "${smartdns_conf}" "${idx}"
@@ -2095,7 +2098,7 @@ start_smartdns(){
 	run_bg smartdns -c ${smartdns_conf}
 	detect_running_status3 "smartdns" "53|7913" "0"
 
-	local caches=$(head /tmp/smartdns_log.txt 2>/dev/null | grep "load cache file" | awk '{print $(NF-1)}')
+	local caches=$(head /tmp/upload/smartdns_log.txt 2>/dev/null | grep "load cache file" | awk '{print $(NF-1)}')
 	if [ -n "${caches}" ];then
 		echo_date "smartdns启动成功，成功加载缓存：${caches}条"
 	else
@@ -2561,8 +2564,8 @@ start_chinadns_ng(){
 	fi
 
 	# gen chinadns-ng conf
-	rm -rf /tmp/chinadns_ng.conf
-	cat >>"/tmp/chinadns_ng.conf" <<-EOF
+	rm -rf /tmp/upload/chinadns_ng.conf
+	cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 		# 监听地址和端口
 		bind-addr ::
 		bind-port ${chng_bind_port}@udp
@@ -2573,18 +2576,18 @@ start_chinadns_ng(){
 		
 	EOF
 
-	echo "# 国内上游" >>/tmp/chinadns_ng.conf
-	[ -n "$CDNS_1" ] && echo "china-dns $CDNS_1" >>/tmp/chinadns_ng.conf
-	[ -n "$CDNS_2" ] && echo "china-dns $CDNS_2" >>/tmp/chinadns_ng.conf
-	[ -n "$CDNS_3" ] && echo "china-dns $CDNS_3" >>/tmp/chinadns_ng.conf
-	echo "" >>/tmp/chinadns_ng.conf
-	echo "# 可信上游" >>/tmp/chinadns_ng.conf
-	[ -n "$FDNS_1" ] && echo "trust-dns $FDNS_1" >>/tmp/chinadns_ng.conf
-	[ -n "$FDNS_2" ] && echo "trust-dns $FDNS_2" >>/tmp/chinadns_ng.conf
-	[ -n "$FDNS_3" ] && echo "trust-dns $FDNS_3" >>/tmp/chinadns_ng.conf
+	echo "# 国内上游" >>/tmp/upload/chinadns_ng.conf
+	[ -n "$CDNS_1" ] && echo "china-dns $CDNS_1" >>/tmp/upload/chinadns_ng.conf
+	[ -n "$CDNS_2" ] && echo "china-dns $CDNS_2" >>/tmp/upload/chinadns_ng.conf
+	[ -n "$CDNS_3" ] && echo "china-dns $CDNS_3" >>/tmp/upload/chinadns_ng.conf
+	echo "" >>/tmp/upload/chinadns_ng.conf
+	echo "# 可信上游" >>/tmp/upload/chinadns_ng.conf
+	[ -n "$FDNS_1" ] && echo "trust-dns $FDNS_1" >>/tmp/upload/chinadns_ng.conf
+	[ -n "$FDNS_2" ] && echo "trust-dns $FDNS_2" >>/tmp/upload/chinadns_ng.conf
+	[ -n "$FDNS_3" ] && echo "trust-dns $FDNS_3" >>/tmp/upload/chinadns_ng.conf
 		
 	if [ "${ss_basic_chng}" == "1" ];then
-		cat >>"/tmp/chinadns_ng.conf" <<-EOF
+		cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 			
 			# 国内优先：gfwlist黑名单模式
 			chnlist-file /koolshare/ss/rules/chnlist.gz
@@ -2597,7 +2600,7 @@ start_chinadns_ng(){
 			
 		EOF
 	elif [ "${ss_basic_chng}" == "2" ];then
-		cat >>"/tmp/chinadns_ng.conf" <<-EOF
+		cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 			
 			# 国外优先：chnlist白名单模式
 			chnlist-file /koolshare/ss/rules/chnlist.gz
@@ -2614,7 +2617,7 @@ start_chinadns_ng(){
 		# 1. 先匹配chnlist.txt内域名，用国内上游解析，并将解析ip结果存于ipset:chnlist,chnlist6中，此部分流量走直连（即使解析到海外ip）
 		# 2. 再匹配gfwlist.txt内域名，用可信上游解析，并将解析ip结果存于ipset:gfwlist,gfwlist6中，此部分流量走代理（即使解析到大陆ip）
 		# 3. 其余域名请求，即chnlist和gfwlist均为匹配上的，同时用国内和可信上游解析，解析结果如果是大陆ip，则走直连，如果是海外ip则走代理
-		cat >>"/tmp/chinadns_ng.conf" <<-EOF
+		cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 			
 			# 智能判断：chnroute模式
 			chnlist-file /koolshare/ss/rules/chnlist.gz
@@ -2629,11 +2632,11 @@ start_chinadns_ng(){
 	fi
 	
 	# defalut
-	cat >>"/tmp/chinadns_ng.conf" <<-EOF
+	cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 		# 当前节点服务器域名直连解析
 	EOF
 	if [ -s /tmp/ss_node_domains.txt ];then
-		cat >>"/tmp/chinadns_ng.conf" <<-EOF
+		cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 			group node
 			group-dnl /tmp/ss_node_domains.txt
 			group-upstream ${CDNS_LINE}
@@ -2641,7 +2644,7 @@ start_chinadns_ng(){
 		EOF
 	fi
 
-	cat >>"/tmp/chinadns_ng.conf" <<-EOF
+	cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 		# 域名白名单
 		group white
 		group-dnl /tmp/white_list.txt
@@ -2663,7 +2666,7 @@ start_chinadns_ng(){
 	EOF
 
 	if [ "${ss_basic_block_resov}" == "1" ]; then
-		cat >>"/tmp/chinadns_ng.conf" <<-EOF
+		cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 			group null
 			group-dnl /tmp/block_list.txt
 			
@@ -2671,7 +2674,7 @@ start_chinadns_ng(){
 	fi
 
 	# 未匹配域名判决
-	cat >>"/tmp/chinadns_ng.conf" <<-EOF
+	cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 		# 测试 tag:none 域名的 IP (针对国内上游)
 		ipset-name4 chnroute
 		ipset-name6 chnroute6
@@ -2681,7 +2684,7 @@ start_chinadns_ng(){
 	if [ "${INTERNET6}" == "0" ];then
 		# 检测到系统未开启ipv6功能，默认关闭所有ipv6解析
 		dbus set ss_basic_internet6_flag=0
-		cat >>"/tmp/chinadns_ng.conf" <<-EOF
+		cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 			# ipv6请求行为：全部过滤
 			no-ipv6
 		EOF
@@ -2694,17 +2697,17 @@ start_chinadns_ng(){
 			echo_date "检测到IPv6透明代理已开启，代理域名的AAAA过滤将自动关闭。"
 		fi
 		if [ "${chng_drop_direc}" == "0" -a "${chng_drop_proxy}" == "1" ];then
-			cat >>"/tmp/chinadns_ng.conf" <<-EOF
+			cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 				# ipv6请求行为，过滤代理域名
 				no-ipv6 tag:gfw,tag:router,tag:black,tag:none@ip:non_china
 			EOF
 		elif [ "${chng_drop_direc}" == "1" -a "${chng_drop_proxy}" == "1" ];then
-			cat >>"/tmp/chinadns_ng.conf" <<-EOF
+			cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 				# ipv6请求行为：过滤全部业务域名，保留节点服务器域名直连解析
 				no-ipv6 tag:chn,tag:white,tag:gfw,tag:router,tag:black,tag:none@ip:china,tag:none@ip:non_china
 			EOF
 		elif [ "${chng_drop_direc}" == "1" -a "${chng_drop_proxy}" == "0" ];then
-			cat >>"/tmp/chinadns_ng.conf" <<-EOF
+			cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 				# ipv6请求行为：全部直连域名
 				no-ipv6 tag:chn,tag:white,tag:none@ip:china
 			EOF
@@ -2715,7 +2718,7 @@ start_chinadns_ng(){
 	cp -rf /tmp/etc/hosts /tmp/etc/chng_hosts
 	sed -i 's/\.[[:space:]]/ /g' /etc/chng_hosts
 	
-	cat >>"/tmp/chinadns_ng.conf" <<-EOF
+	cat >>"/tmp/upload/chinadns_ng.conf" <<-EOF
 	
 		# 过滤dns
 		filter-qtype 64,65
@@ -2728,11 +2731,11 @@ start_chinadns_ng(){
 		cache-stale 86400
 		cache-refresh 20
 		cache-ignore asuscomm.com
-		#cache-db /tmp/chinadns_cache.db
+		#cache-db /tmp/upload/chinadns_cache.db
 		
 		# verdict 缓存 (用于 tag:none 域名)
 		verdict-cache 8192
-		verdict-cache-db /tmp/chinadns_verdict_cache.db
+		verdict-cache-db /tmp/upload/chinadns_verdict_cache.db
 		
 		# dns重复发包
 		${DNS_REPEATS}
@@ -2740,11 +2743,11 @@ start_chinadns_ng(){
 		# 详细日志
 		#verbose
 	EOF
-	echo_date "🆗 chinadns-ng配置文件生成完毕，位于/tmp/chinadns_ng.conf"
+	echo_date "🆗 chinadns-ng配置文件生成完毕，位于/tmp/upload/chinadns_ng.conf"
 	echo_date "⚡️ 开启chinadns-ng，用于所有域名的DNS解析..."
-	rm -rf /tmp/chinadns@cache.db >/dev/null 2>&1
-	rm -rf /tmp/chinadns@verdict-cache.db >/dev/null 2>&1
-	rm -rf /tmp/chinadns_log.txt >/dev/null 2>&1
+	rm -rf /tmp/upload/chinadns@cache.db >/dev/null 2>&1
+	rm -rf /tmp/upload/chinadns@verdict-cache.db >/dev/null 2>&1
+	rm -rf /tmp/upload/chinadns_log.txt >/dev/null 2>&1
 
 	local pkg_arch=$(cat /koolshare/webs/Module_shadowsocks.asp | tr -d '\r' | grep -Eo "PKG_ARCH=.+"|awk -F "=" '{print $2}'|sed 's/"//g')
 	local pkg_type=$(cat /koolshare/webs/Module_shadowsocks.asp | tr -d '\r' | grep -Eo "PKG_TYPE=.+"|awk -F "=" '{print $2}'|sed 's/"//g')
@@ -2754,17 +2757,17 @@ start_chinadns_ng(){
 		if [ "${pkg_type}" == "full" -a "${pkg_exta}" == "_debug" ];then
 			echo_date "⚡️ 开启chinadns-ng debug模式..."
 			local _debug_mode=1
-			#sed -i 's/#verbose/verbose/g' /tmp/chinadns_ng.conf
-			#sed -i 's/#cache-db \/tmp\/chinadns_cache.db/cache-db \/tmp\/chinadns_cache.db/g' /tmp/chinadns_ng.conf
+			#sed -i 's/#verbose/verbose/g' /tmp/upload/chinadns_ng.conf
+			#sed -i 's/#cache-db \/tmp\/chinadns_cache.db/cache-db \/tmp\/chinadns_cache.db/g' /tmp/upload/chinadns_ng.conf
 		fi
 	fi
 	
 	if [ "${_debug_mode}" == "1" ];then
 		ulimit -c unlimited
 		cd /tmp
-		env -i PATH=${PATH} chinadns-ng -C /tmp/chinadns_ng.conf >/tmp/chinadns_log.txt 2>&1 &
+		env -i PATH=${PATH} chinadns-ng -C /tmp/upload/chinadns_ng.conf >/tmp/upload/chinadns_log.txt 2>&1 &
 	else
-		env -i PATH=${PATH} chinadns-ng -C /tmp/chinadns_ng.conf >/dev/null 2>&1 &
+		env -i PATH=${PATH} chinadns-ng -C /tmp/upload/chinadns_ng.conf >/dev/null 2>&1 &
 	fi
 	
 	detect_running_status chinadns-ng
@@ -4733,9 +4736,9 @@ start_xray() {
 	fi
 	detect_running_status3 xray 23456 0 force
 
-	# 启动 xray 内存监控（防止长期运行后内存泄漏导致 OOM）
-	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
-		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
+	# 注册 xray 内存看门狗（cron 每 5 分钟检查一次 RSS，超过 200MB 自动重启）
+	if [ -z "$(cru l | grep xray_mem_watch)" ]; then
+		cru a xray_mem_watch "*/5 * * * * /bin/sh /koolshare/scripts/ss_xray_mem_cron.sh"
 	fi
 }
 
@@ -4875,9 +4878,9 @@ start_trojan(){
 	run_bg env "GOMEMLIMIT=60MiB" /koolshare/bin/xray run -c $TROJAN_CONFIG_FILE
 	detect_running_status3 xray 23456 0 force
 
-	# 启动 xray 内存监控
-	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
-		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
+	# 注册 xray 内存看门狗
+	if [ -z "$(cru l | grep xray_mem_watch)" ]; then
+		cru a xray_mem_watch "*/5 * * * * /bin/sh /koolshare/scripts/ss_xray_mem_cron.sh"
 	fi
 }
 
@@ -5066,9 +5069,9 @@ start_hy2(){
 	run_bg env "GOMEMLIMIT=60MiB" /koolshare/bin/xray run -c $HY2_CONFIG_FILE
 	detect_running_status3 xray 23456 0 force
 
-	# 启动 xray 内存监控
-	if [ -x "/koolshare/scripts/ss_xray_mem_watch.sh" ]; then
-		run_bg /koolshare/scripts/ss_xray_mem_watch.sh
+	# 注册 xray 内存看门狗
+	if [ -z "$(cru l | grep xray_mem_watch)" ]; then
+		cru a xray_mem_watch "*/5 * * * * /bin/sh /koolshare/scripts/ss_xray_mem_cron.sh"
 	fi
 }
 
@@ -5310,6 +5313,9 @@ kill_cron_job() {
 	if [ -n "$(cru l | grep sslatencyjob)" ]; then
 		echo_date 删除SSR定时订阅任务...
 		sed -i '/sslatencyjob/d' /var/spool/cron/crontabs/* >/dev/null 2>&1
+	fi
+	if [ -n "$(cru l | grep xray_mem_watch)" ]; then
+		sed -i '/xray_mem_watch/d' /var/spool/cron/crontabs/* >/dev/null 2>&1
 	fi
 }
 #--------------------------------------nat part begin------------------------------------------------
@@ -7259,6 +7265,8 @@ check_status() {
 	dbus remove ss_basic_wait
 	if [ "$ss_failover_enable" == "1" ]; then
 		sh /koolshare/scripts/ss_status_daemon.sh restart >/dev/null 2>&1
+		fss_log_truncate /tmp/upload/ssf_status.txt
+		fss_log_truncate /tmp/upload/ssc_status.txt
 		echo "=========================================== start/restart ==========================================" >>/tmp/upload/ssf_status.txt
 		echo "=========================================== start/restart ==========================================" >>/tmp/upload/ssc_status.txt
 		sh /koolshare/scripts/ss_status_main.sh >/dev/null 2>&1 &
@@ -7408,6 +7416,18 @@ apply_ss() {
 	# store current status
 	dbus set ss_basic_status="1"
 	echo_date ------------------------ 【科学上网】 启动完毕 ------------------------
+	# 飞书通知：启动完成
+	if [ -n "${ss_basic_feishu_webhook}" ]; then
+	(
+		_hostname="$(nvram get computer_name 2>/dev/null || echo "Router")"
+		_node="${ss_basic_name:-未知}"
+		_out_ip="$(dbus get ss_basic_out_ip 2>/dev/null || echo "未知")"
+		curl-fancyss -sk --connect-timeout 3 --max-time 5 -X POST \
+			-H "Content-Type: application/json" \
+			-d "{\"msg_type\":\"text\",\"content\":{\"text\":\"🟢 [${_hostname}] fancyss 启动完毕\n节点：${_node}\n出口：${_out_ip}\n时间：$(TZ=UTC-8 date -R '+%Y-%m-%d %H:%M:%S')\"}}" \
+			"${ss_basic_feishu_webhook}" >/dev/null 2>&1
+	) &
+	fi
 	FSS_SKIP_XRAY_PORT_CLEANUP=""
 	rm -f "${shunt_prev_xray_json}" >/dev/null 2>&1
 }

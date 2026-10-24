@@ -62,6 +62,25 @@ unset TERM
 
 alias echo_date='echo 【$(TZ=UTC-8 date -R +%Y%m%d\ %X)】:'
 
+# 日志大小控制：超过指定字节数时只保留最后一半，防止长期运行撑爆内存
+# 注意：使用 cat > 写入同一文件（保持 inode），避免 tail -f 中断
+# 用法: fss_log_truncate <文件路径> [最大字节数，默认102400即100KB]
+fss_log_truncate() {
+	local file="$1"
+	local max_size="${2:-102400}"
+	[ -f "${file}" ] || return 0
+	local size
+	size=$(wc -c < "${file}" 2>/dev/null || echo 0)
+	if [ "${size}" -gt "${max_size}" ]; then
+		local keep=$((size / 2))
+		[ "${keep}" -lt 1024 ] && keep=1024
+		local tmp_file="${file}.tmp"
+		tail -c "${keep}" "${file}" > "${tmp_file}" 2>/dev/null || return 0
+		cat "${tmp_file}" > "${file}" 2>/dev/null
+		rm -f "${tmp_file}" 2>/dev/null
+	fi
+}
+
 get_runtime_proxy_mode() {
 	local mode="${ss_basic_mode}"
 
@@ -724,6 +743,8 @@ close_in_five() {
 		# set ss_basic_status=1，because some scripts still running in background
 		dbus set ss_basic_status=1
 		if [ "$ss_failover_enable" == "1" ]; then
+			fss_log_truncate /tmp/upload/ssf_status.txt
+			fss_log_truncate /tmp/upload/ssc_status.txt
 			echo "=========================================== start/restart ==========================================" >>/tmp/upload/ssf_status.txt
 			echo "=========================================== start/restart ==========================================" >>/tmp/upload/ssc_status.txt
 			run start-stop-daemon -S -q -b -x /koolshare/scripts/ss_status_main.sh
