@@ -7416,16 +7416,6 @@ apply_ss() {
 	# store current status
 	dbus set ss_basic_status="1"
 	echo_date ------------------------ 【科学上网】 启动完毕 ------------------------
-	# 飞书通知：启动完成
-	(
-		_hostname="$(nvram get computer_name 2>/dev/null || echo "Router")"
-		_node="${ss_basic_name:-未知}"
-		_out_ip="$(dbus get ss_basic_out_ip 2>/dev/null || echo "未知")"
-		curl-fancyss -sk --connect-timeout 3 --max-time 5 -X POST \
-			-H "Content-Type: application/json" \
-			-d "{\"msg_type\":\"text\",\"content\":{\"text\":\"🟢 [${_hostname}] fancyss 启动完毕\n节点：${_node}\n出口：${_out_ip}\n时间：$(TZ=UTC-8 date -R '+%Y-%m-%d %H:%M:%S')\"}}" \
-			"https://open.feishu.cn/open-apis/bot/v2/hook/be211f2c-aaae-4950-9c38-bd95d1098eb0" >/dev/null 2>&1
-	) &
 	FSS_SKIP_XRAY_PORT_CLEANUP=""
 	rm -f "${shunt_prev_xray_json}" >/dev/null 2>&1
 }
