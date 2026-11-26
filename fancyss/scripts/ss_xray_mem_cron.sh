@@ -5,6 +5,30 @@
 
 MAX_RSS_KB=204800  # 200MB，超过则重启
 LOG_FILE="/tmp/upload/ss_xray_restart.log"
+XRAY_ACCESS_LOG="/tmp/upload/xray_access.log"
+XRAY_ERROR_LOG="/tmp/upload/xray_error.log"
+XRAY_LOG_MAX_BYTES=1048576  # 每个Xray日志最大1MiB，超过后保留后一半
+
+# 功能：限制单个Xray日志大小；使用同一inode写回，避免替换正在写入的日志文件。
+truncate_xray_log() {
+	local file="$1"
+	[ -f "${file}" ] || return 0
+
+	local size
+	size=$(wc -c < "${file}" 2>/dev/null || echo 0)
+	[ "${size}" -gt "${XRAY_LOG_MAX_BYTES}" ] || return 0
+
+	local keep=$((XRAY_LOG_MAX_BYTES / 2))
+	local tmp_file="${file}.truncate.$$"
+	if tail -c "${keep}" "${file}" > "${tmp_file}" 2>/dev/null; then
+		cat "${tmp_file}" > "${file}" 2>/dev/null || true
+	fi
+	rm -f "${tmp_file}" >/dev/null 2>&1
+}
+
+# 即使Xray未运行或本轮无需重启，也先控制历史日志大小。
+truncate_xray_log "${XRAY_ACCESS_LOG}"
+truncate_xray_log "${XRAY_ERROR_LOG}"
 
 # 检查 xray 是否在运行（pidof 可能返回多个 PID，分流模式下常见）
 XRAY_PIDS=$(pidof xray 2>/dev/null)

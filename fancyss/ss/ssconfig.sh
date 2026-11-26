@@ -25,21 +25,23 @@ WAN_ACTION=""
 NAT_ACTION=""
 WEB_ACTION=""
 ARG_OBFS=""
-OUTBOUNDS="[]"
 LINUX_VER=$(uname -r|awk -F"." '{print $1$2}')
 
 #-----------------------------------------------
 
+# 功能：获取 koolss.lock 独占文件锁，防止启动、停止和重载流程并发修改运行环境。
 set_lock() {
 	exec 1000>"$LOCK_FILE"
 	flock -x 1000
 }
 
+# 功能：释放 koolss.lock 文件锁并删除锁文件。
 unset_lock() {
 	flock -u 1000
 	rm -rf "$LOCK_FILE"
 }
 
+# 功能：刷新 CPU 线程数、运营商 DNS、LAN 信息以及 WAN/NAT/Web 触发来源等运行时上下文。
 refresh_runtime_context() {
 	[ -n "${THREAD}" ] || THREAD=$(grep -c '^processor' /proc/cpuinfo)
 	dbus set ss_basic_version_local=$(cat /koolshare/ss/version)
@@ -52,6 +54,7 @@ refresh_runtime_context() {
 	WEB_ACTION=$(ps | grep "ss_config.sh" | grep -v grep)
 }
 
+# 功能：将 Base64 编码的 SS2022 复合密码规范化为 Xray 所需的明文格式。
 normalize_ss2022_password() {
 	[ "${ss_basic_type}" = "0" ] || return 0
 	printf '%s' "${ss_basic_method}" | grep -q '^2022-' || return 0
@@ -65,6 +68,7 @@ normalize_ss2022_password() {
 	ss_basic_password="${decoded}"
 }
 
+# 功能：从 schema2 节点存储回读敏感字段，补齐当前节点密码等运行时数据。
 refresh_schema2_secret_fields() {
 	local current_node_id=""
 	local raw_password=""
@@ -89,6 +93,7 @@ refresh_schema2_secret_fields() {
 	esac
 }
 
+# 功能：读取路由器型号，优先使用 ODMPID，未设置时回退到 productid。
 get_model_name(){
 	local ODMPID=$(nvram get odmpid)
 	local PRODUCTID=$(nvram get productid)
@@ -99,6 +104,7 @@ get_model_name(){
 	fi
 }
 
+# 功能：识别固件 UI 风格，并将对应的软件中心皮肤设置写入 nvram。
 set_skin(){
 	local UI_TYPE=ASUSWRT
 	local SC_SKIN=$(nvram get sc_skin)
@@ -125,6 +131,9 @@ set_skin(){
 	fi
 }
 
+# 功能：从指定 HTTP 响应的 Date 头解析服务器时间。
+# 参数：$1 为时间来源地址；$2 非空时输出调试日志，否则输出 Unix 时间戳。
+# 返回：解析成功输出时间戳或日志，无法取得有效时间时返回非零状态。
 get_time(){
 	local src=$1
 	local debug=$2
@@ -192,6 +201,7 @@ get_time(){
 	fi
 }
 
+# 功能：比较路由器与服务器时间，误差达到 60 秒时自动校准系统时间。
 compare_time(){
 	local TIMESTAMP_SOURCE=$1
 	local SERVER_TIMESTAMP=$2
@@ -214,6 +224,8 @@ compare_time(){
 	fi
 }
 
+# 功能：调用 Xray 的配置测试能力检查指定 JSON，并将诊断文本保存到 _test_ret。
+# 返回：0 表示通过，2 表示需要移除 fingerprint 后重试，1 表示其他配置错误。
 test_xray_conf(){
 	#uset _test_ret
 	local conf=$1
@@ -245,6 +257,7 @@ test_xray_conf(){
 	fi
 }
 
+# 功能：通过多个在线时间源检测并校准路由器时间，全部失败时终止启动。
 check_time(){
 	# 因为vmess代理协议要求本地时间和服务器时间一致才能工作，所以检测下路由器时间是否设置正确
 	# 时间检测优先从worldtimeapi.org获取，如果获取成功，能同时得到公网出口ipv4地址
@@ -320,6 +333,7 @@ check_time(){
 	fi
 }
 
+# 功能：依次 ping 多个 IPv4 地址检查公网连通性，全部失败时终止启动。
 check_internet4(){
 	# 开启插件之前必须检查网络，如果网络不通，则插件不予开启
 	# 考虑到本插件可能的国外环境用户，最后添加8.8.8.8的检测
@@ -355,6 +369,7 @@ check_internet4(){
 	fi
 }
 
+# 功能：依次 ping 多个 IPv6 地址检查公网连通性，并将结果写入 INTERNET6。
 check_internet6(){
 	# 开启插件之前必须检查网络，如果网络不通，则插件不予开启
 	# 考虑到本插件可能的国外环境用户，最后添加2001:de4::101和2001:4860:4860::8888的检测
@@ -390,6 +405,7 @@ check_internet6(){
 		INTERNET6=0
 	fi
 }
+# 功能：预检 IPv6 开关和全局地址，设置 INTERNET6 以供后续 DNS 与代理流程使用。
 check_internet6_pre(){
 	# ipv6预检查
 	if [ $(nvram get ipv6_service) == "disabled" ];then
@@ -407,6 +423,7 @@ check_internet6_pre(){
 	
 }
 
+# 功能：统筹 IPv6 预检及可选的 IPv4/IPv6 公网连通性检查。
 check_internet(){
 	# 预先检查先ipv6开关和ip地址，用于后面的DNS解析过滤
 	check_internet6_pre
@@ -423,10 +440,12 @@ check_internet(){
 	fi
 }
 
+# 功能：判断用户是否启用了 IPv6 透明代理，结果通过状态码返回。
 ipv6_proxy_enabled() {
 	[ "${ss_basic_proxy_ipv6}" == "1" ]
 }
 
+# 功能：判断当前节点协议是否支持 IPv6 透明代理，结果通过状态码返回。
 ipv6_proxy_supported() {
 	case "${ss_basic_type}" in
 	0|1|3|4|5|6|7|8|9)
@@ -440,6 +459,7 @@ ipv6_proxy_supported() {
 	return 1
 }
 
+# 功能：检查 IPv6 代理所需协议、系统网络及 ip6tables 能力，不满足时自动回退到 IPv4。
 check_ipv6_proxy_prerequisites() {
 	ipv6_proxy_enabled || return 0
 	echo_date "➡️ IPv6透明代理预检查..."
@@ -515,6 +535,7 @@ check_ipv6_proxy_prerequisites() {
 	echo_date "✅️ IPv6透明代理预检查通过，继续！"
 }
 
+# 功能：根据 IPv6 代理开关和 DNS 方案同步 AAAA 保留或过滤策略。
 sync_dns_ipv6_policy() {
 	set_default "ss_basic_dns_plan" "1"
 	set_default "ss_basic_chng_ipv6_drop_proxy" "1"
@@ -540,6 +561,7 @@ sync_dns_ipv6_policy() {
 	fi
 }
 
+# 功能：检测直连公网出口及 WAN 口 IPv4 地址，并记录地址属地和网络环境提示。
 check_chn_public_ip(){
 	echo_date "检测[公网出口IPV4地址]和[路由器WAN口IPV4地址]..."
 
@@ -656,6 +678,8 @@ check_chn_public_ip(){
 	fi
 }
 
+# 功能：加载当前节点和运行环境，完成启动前的系统参数、协议能力及网络条件检查。
+# 副作用：可能调整 nvram/DBus 设置，并确定各协议临时配置和最终配置的路径。
 prepare_system() {
 	# prepare system
 	echo_date "🛠️ 一些准备工作，请稍后..."
@@ -886,6 +910,7 @@ prepare_system() {
 	echo "${curr_node_index}" >>/tmp/upload/fancyss_node_name.txt
 }
 
+# 功能：根据 LAN 地址和子网掩码计算并输出 LAN 的 CIDR 网段。
 get_lan_cidr() {
 	local netmask=$(nvram get lan_netmask)
 	local x=${netmask##*255.}
@@ -896,6 +921,7 @@ get_lan_cidr() {
 	echo $lan_ipaddr/$suffix
 }
 
+# 功能：根据 WAN0 地址和子网掩码计算并输出 WAN0 的 CIDR 网段。
 get_wan0_cidr() {
 	local netmask=$(nvram get wan0_netmask)
 	local x=${netmask##*255.}
@@ -910,6 +936,7 @@ get_wan0_cidr() {
 	fi
 }
 
+# 功能：将 ss_basic_type 数值映射为 SS、SSR、VMess 等协议简称。
 __get_type_abbr_name() {
 	case "${ss_basic_type}" in
 	0)
@@ -942,14 +969,17 @@ __get_type_abbr_name() {
 	esac
 }
 
+# 功能：输出 IPv4 透明代理统一使用的本地端口 3333。
 get_tproxy_port4() {
 	echo "3333"
 }
 
+# 功能：输出 IPv6 透明代理统一使用的本地端口 3333。
 get_tproxy_port6() {
 	echo "3333"
 }
 
+# 功能：判断当前代理核心是否支持 UDP；NaïveProxy 和 AnyTLS 返回不支持。
 proxy_core_supports_udp() {
 	case "${ss_basic_type}" in
 	6|9)
@@ -959,6 +989,7 @@ proxy_core_supports_udp() {
 	return 0
 }
 
+# 功能：返回用于 UDP 不支持提示的当前协议名称。
 proxy_core_udp_unsupported_name() {
 	case "${ss_basic_type}" in
 	6)
@@ -973,6 +1004,7 @@ proxy_core_udp_unsupported_name() {
 	esac
 }
 
+# 功能：统一启用节点域名动态解析，并清理旧版静态解析相关的 DBus 字段。
 normalize_server_resolv_mode() {
 	ss_basic_server_resolv_mode="1"
 	dbus set ss_basic_server_resolv_mode="1"
@@ -981,10 +1013,12 @@ normalize_server_resolv_mode() {
 	dbus remove ss_basic_lastru
 }
 
+# 功能：动态解析兼容判断；当前版本始终返回真。
 server_resolv_mode_is_dynamic() {
 	return 0
 }
 
+# 功能：清除当前节点已解析服务器地址的运行时变量和 DBus 缓存。
 clear_current_node_server_ip() {
 	unset CURRENT_NODE_SERVER_RESOLVED_IP
 	unset CURRENT_NODE_SERVER_RESOLVED_HOST
@@ -994,6 +1028,7 @@ clear_current_node_server_ip() {
 	dbus remove ss_basic_server_ip_host
 }
 
+# 功能：记录有效的节点服务器解析地址及其原始域名，空地址则清理缓存并失败返回。
 record_current_node_server_ip() {
 	local server_ip="$1"
 	[ -n "${server_ip}" ] || {
@@ -1007,6 +1042,7 @@ record_current_node_server_ip() {
 	return 0
 }
 
+# 功能：解析 TUIC relay.server，兼容域名、IPv4 和带方括号的 IPv6，逐行输出主机与端口。
 extract_tuic_server_host_port() {
 	local tuic_server_raw="$1"
 	local tuic_server=""
@@ -1034,6 +1070,7 @@ extract_tuic_server_host_port() {
 	printf '%s\n%s\n' "${tuic_server}" "${tuic_port}"
 }
 
+# 功能：从 Xray 类自定义 JSON 的首个 outbound 中提取服务器地址或端口。
 extract_xray_like_server_field_from_json_text() {
 	local json_text="$1"
 	local field="$2"
@@ -1059,6 +1096,7 @@ extract_xray_like_server_field_from_json_text() {
 	' 2>/dev/null
 }
 
+# 功能：统一提取当前节点的服务器主机、端口和地址类型，写入 CURRENT_NODE_SERVER_* 变量。
 resolve_current_node_server_meta() {
 	local host="" port="" json_text="" relay_server=""
 
@@ -1121,12 +1159,14 @@ resolve_current_node_server_meta() {
 	CURRENT_NODE_SERVER_IS_IP="$?"
 }
 
+# 功能：刷新节点服务器元数据，并判断目标是否为需要 DNS 解析的域名。
 current_node_server_is_domain_target() {
 	resolve_current_node_server_meta
 	[ -n "${CURRENT_NODE_SERVER_HOST}" ] || return 1
 	[ -n "$(is_domain "${CURRENT_NODE_SERVER_HOST}")" ]
 }
 
+# 功能：重建节点域名直连运行时文件，并同步机场专属 DNS 覆盖规则。
 refresh_node_direct_domain_file() {
 	fss_require_base_dns >/dev/null 2>&1 || true
 	fss_refresh_node_direct_cache
@@ -1144,6 +1184,7 @@ refresh_node_direct_domain_file() {
 	fi
 }
 
+# 功能：刷新节点直连域名列表；插件运行时重启 DNS 服务使变更生效。
 refresh_node_direct_dns() {
 	refresh_node_direct_domain_file || return 1
 	[ "${ss_basic_enable}" = "1" ] || return 0
@@ -1159,6 +1200,7 @@ refresh_node_direct_dns() {
 	start_dns_x
 }
 
+# 功能：通过本地 DNS 动态解析当前节点域名，优先复用有效的运行时缓存。
 refresh_current_node_server_ip_runtime() {
 	local resolved_ip=""
 	[ -n "${ss_basic_server_orig}" ] || return 1
@@ -1181,12 +1223,14 @@ refresh_current_node_server_ip_runtime() {
 	return 0
 }
 
+# 功能：判断当前节点是否使用域名，从而决定是否需要在代理核心之前启动 DNS。
 should_bootstrap_dns_before_proxy() {
 	[ -n "${ss_basic_server_orig}" ] || return 1
 	[ -n "$(is_domain "${ss_basic_server_orig}")" ] || return 1
 	return 0
 }
 
+# 功能：将受支持协议的首个 outbound 服务器地址改写为指定的运行时解析地址。
 rewrite_xray_like_outbound_server() {
 	local config_file="$1"
 	local target_addr="$2"
@@ -1214,6 +1258,7 @@ rewrite_xray_like_outbound_server() {
 
 # ================================= ss stop ===============================
 
+# 功能：清理 dnsmasq、名单和节点解析等运行配置；Web 停止流程还会删除生成的代理配置。
 restore_conf() {
 	echo_date "删除fancyss相关的名单配置文件..."
 	rm -f /jffs/configs/dnsmasq.d/custom.conf
@@ -1244,6 +1289,7 @@ restore_conf() {
 	fi
 }
 
+# 功能：停止代理核心、DNS、状态辅助及混淆等相关进程，并清理辅助脚本和 TCP Fast Open 设置。
 kill_process() {
 	local v2ray_process=$(pidof v2ray)
 	if [ -n "$v2ray_process" ]; then
@@ -1349,6 +1395,7 @@ kill_process() {
 	fi
 }
 
+# 功能：检查分流热重载开关、运行状态、旧配置及 Xray 进程，判断能否复用当前核心。
 shunt_hot_restart_eligible() {
 	[ "${ss_basic_status}" = "1" ] || return 1
 	[ "${ss_basic_mode}" = "7" ] || return 1
@@ -1359,6 +1406,7 @@ shunt_hot_restart_eligible() {
 	return 0
 }
 
+# 功能：规范化并比较新旧分流配置；有 jq 时忽略 JSON 排版和键顺序差异。
 shunt_configs_equivalent() {
 	local old_file="$1"
 	local new_file="$2"
@@ -1392,6 +1440,7 @@ shunt_configs_equivalent() {
 }
 # ================================= ss start ==============================
 
+# 功能：初始化当前节点原始服务器地址、解析缓存及机场 DNS 覆盖状态。
 init_current_node_server_state() {
 	normalize_server_resolv_mode
 	clear_current_node_server_ip
@@ -1420,6 +1469,7 @@ init_current_node_server_state() {
 	return 0
 }
 
+# 功能：初始化节点服务器状态并刷新直连域名；IP 直接使用，域名保留给运行时 DNS 解析。
 resolv_server_ip() {
 	init_current_node_server_state
 	refresh_node_direct_domain_file
@@ -1441,6 +1491,7 @@ resolv_server_ip() {
 }
 
 # create shadowsocks config file...
+# 功能：根据当前 SSR 节点生成 rss-redir/rss-local 共用的 /koolshare/ss/ssr.json。
 creat_ssr_json() {
 	if [ -z "${WEB_ACTION}" ]; then
 		if [ -n "${WAN_ACTION}" ]; then
@@ -1468,6 +1519,7 @@ creat_ssr_json() {
 	EOF
 }
 
+# 功能：确定节点服务器的实际地址及属地，为避免节点流量再次被代理提供判断依据。
 get_proxy_server_ip(){
 	# 获取代理服务器ip地址
 	# 在代理程序启动前获取，不一定是真实的代理服务器ip，比如中转节点
@@ -1511,6 +1563,7 @@ get_proxy_server_ip(){
 	fi
 }
 
+# 功能：启动 rss-local，在 127.0.0.1:23456 提供 SSR 的 SOCKS5 和 UDP 支持。
 start_ssr_local() {
 	if [ -n "$(ps|grep rss-local|grep 23456)" ];then
 		return
@@ -1521,6 +1574,7 @@ start_ssr_local() {
 	detect_running_status rss-local "/var/run/ssrlocal.pid"
 }
 
+# 功能：值非空时写入 DBus 键，值为空时删除该键。
 dbus_dset(){
 	# set key when value exist, delete when empty
 	if [ -n "$2" ];then
@@ -1530,6 +1584,7 @@ dbus_dset(){
 	fi
 }
 
+# 功能：仅在值非空时写入 DBus 键，空值保留已有配置。
 dbus_eset(){
 	# set key when value exist
 	if [ -n "$2" ];then
@@ -1537,6 +1592,8 @@ dbus_eset(){
 	fi
 }
 
+# 功能：根据 DNS 方案、代理模式和机场专属规则启动 chinadns-ng 或 SmartDNS。
+# 副作用：必要时纠正国内外优先模式，并启动对应的 DNS 后台进程。
 start_dns_x(){
 	fss_require_base_dns >/dev/null 2>&1 || true
 	set_default "ss_basic_dns_plan" "1"
@@ -1625,6 +1682,7 @@ start_dns_x(){
 	fi
 }
 
+# 功能：格式化 SmartDNS 上游地址和端口，IPv6 非默认端口使用方括号。
 smartdns_format_addr() {
 	local addr="$1"
 	local port="$2"
@@ -1642,6 +1700,7 @@ smartdns_format_addr() {
 	esac
 }
 
+# 功能：根据 DNS 模式和上游作用域生成 SmartDNS 分组、黑白名单等服务器参数。
 smartdns_server_flags() {
 	local mode="$1"
 	local scope="$2"
@@ -1673,6 +1732,7 @@ smartdns_server_flags() {
 	esac
 }
 
+# 功能：向 SmartDNS 配置追加一条 UDP、TCP 或 DoT 上游，支持分组及代理参数。
 smartdns_append_server_line() {
 	local outfile="$1"
 	local proto="$2"
@@ -1711,6 +1771,7 @@ smartdns_append_server_line() {
 	echo "${line}" >> "${outfile}"
 }
 
+# 功能：批量写入 chn/gfw 上游；UDP 国外 DNS 使用本地 relay，并在无可用上游时提供兜底。
 smartdns_append_group_servers() {
 	local outfile="$1"
 	local mode="$2"
@@ -1754,6 +1815,7 @@ EOF
 	fi
 }
 
+# 功能：将国内 DNS 上游写入 node_direct 组，供节点服务器域名直连解析。
 smartdns_append_node_direct_servers() {
 	local outfile="$1"
 	local sep="$(printf '\037')"
@@ -1765,18 +1827,21 @@ $(smartdns_group_items_tsv chn)
 EOF
 }
 
+# 功能：根据机场标识生成其专属代理域名在 SmartDNS 中的组名。
 smartdns_airport_group_name() {
 	local airport_identity="$1"
 	[ -n "${airport_identity}" ] || return 1
 	printf 'airport_%s\n' "${airport_identity}"
 }
 
+# 功能：根据机场标识生成其专属 DNS 域名在 SmartDNS 中的组名。
 smartdns_airport_dns_group_name() {
 	local airport_identity="$1"
 	[ -n "${airport_identity}" ] || return 1
 	printf 'airport_dns_%s\n' "${airport_identity}"
 }
 
+# 功能：按机场标识写入其专属 UDP、TCP、DoT、DoH 或 QUIC DNS 上游。
 smartdns_append_airport_node_servers_by_identity() {
 	local outfile="$1"
 	local airport_identity="$2"
@@ -1815,6 +1880,7 @@ smartdns_append_airport_node_servers_by_identity() {
 	done
 }
 
+# 功能：按代理模式和 IPv6 开关追加 SmartDNS 的 AAAA 过滤、保留及域名集合策略。
 smartdns_append_ipv6_policy() {
 	local outfile="$1"
 	local mode="$2"
@@ -1823,6 +1889,7 @@ smartdns_append_ipv6_policy() {
 	local airport_dns_group=""
 	local airport_dns_file=""
 	[ -s /tmp/ss_node_domains.txt ] && has_node_direct="1"
+	# 功能：局部辅助函数：为启用中的机场专属 DNS 域名组追加 AAAA 抑制规则。
 	smartdns_append_airport_dns_ipv6_lines() {
 		while IFS="$(printf '\037')" read -r airport_identity _airport_label _airport_plan
 		do
@@ -1890,6 +1957,8 @@ EOF
 	esac
 }
 
+# 功能：生成完整 SmartDNS 运行配置，包括域名集合、测速、缓存、IPv6、日志和各组上游。
+# 参数：$1 为输出文件，$2 为 SmartDNS 运行模式。
 smartdns_generate_runtime_conf() {
 	local outfile="$1"
 	local mode="$2"
@@ -2046,6 +2115,7 @@ $(fss_airport_special_iter_active_tsv 2>/dev/null)
 	fi
 }
 
+# 功能：切换并清理节点对应的 SmartDNS 缓存，生成运行配置后启动并检查 SmartDNS。
 start_smartdns(){
 	local idx=$1
 	local smartdns_conf=/tmp/upload/smartdns_fancyss.conf
@@ -2106,6 +2176,8 @@ start_smartdns(){
 	fi
 }
 
+# 功能：规范化 DNS 设置、校验国内 DNS 属地、生成 chinadns-ng 配置并启动进程。
+# 副作用：可能修正并持久化无效的 DNS 配置，同时写入运行配置和日志文件。
 start_chinadns_ng(){
 	# 0. set default var
 	local CDNS_LINE=""
@@ -2190,6 +2262,7 @@ start_chinadns_ng(){
 	echo_date "----------------------- start chinadns-ng -----------------------"
 	echo_date "💾 生成chinadns-ng配置文件，用于国内外DNS分流..."
 
+	# 功能：局部辅助函数：检查预置国内 UDP DNS 是否属于大陆或保留地址，异常时替换为默认值。
 	check_fix_isp(){
 		local dns_para=$1
 		local dns_seq=$2
@@ -2255,6 +2328,7 @@ start_chinadns_ng(){
 		fi
 	fi
 
+	# 功能：局部辅助函数：检查自定义国内 UDP/TCP DNS 的地址和属地，异常时替换并持久化默认值。
 	check_user_dns(){
 		local dns_para=$1
 		local dns_seq=$2
@@ -2774,6 +2848,7 @@ start_chinadns_ng(){
 	echo_date "---------------------------------------------------------"
 }
 
+# 功能：解析 DNS 地址的 #端口、IPv4:端口或 [IPv6]:端口形式，逐行输出地址、端口和显式端口标记。
 parse_dns_addr_port(){
 	local dns_raw="$1"
 	local default_port="${2:-53}"
@@ -2809,6 +2884,7 @@ parse_dns_addr_port(){
 	printf '%s\n%s\n%s\n' "${addr}" "${port}" "${explicit_port}"
 }
 
+# 功能：规范化 DNS IP 端点的端口表示，非 IP 输入保持原样。
 format_dns_endpoint(){
 	local dns_raw="$1"
 	local default_port="${2:-53}"
@@ -2836,6 +2912,7 @@ format_dns_endpoint(){
 	esac
 }
 
+# 功能：旧版域名判断辅助函数：输入为裸域名时返回成功，URL、路径或无点号输入返回失败。
 detect_domain() {
 	domain1=$(echo $1 | grep -E "^https://|^http://|/")
 	domain2=$(echo $1 | grep -E "\.")
@@ -2848,6 +2925,7 @@ detect_domain() {
 	fi
 }
 
+# 功能：排除 IPv4/IPv6 后校验域名格式，合法时输出该域名。
 is_domain(){
 	[ -n "$1" ] || return 1
 	__valid_ip46 "$1" >/dev/null 2>&1
@@ -2859,6 +2937,7 @@ is_domain(){
 	echo $1 | awk 'BEGIN {regex = "^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"} $0 ~ regex { print }'
 }
 
+# 功能：将 DNS 传输协议映射为 chinadns-ng 使用的 udp-relay 或 socks5 代理类型。
 get_proxy_type(){
 	case "$1" in
 	udp)
@@ -2870,12 +2949,14 @@ get_proxy_type(){
 	esac
 }
 
+# 功能：读取指定 DNS 类型和序号当前选择的 udp、tcp 或 dot 传输方式。
 get_dns_selected_net(){
 	local type="$1"
 	local numb="$2"
 	eval echo \$ss_basic_chng_${type}_net_${numb}_typ
 }
 
+# 功能：返回指定 DNS 项实际采用的传输方式；当前与所选传输方式一致。
 get_dns_effective_net(){
 	local type="$1"
 	local numb="$2"
@@ -2883,6 +2964,7 @@ get_dns_effective_net(){
 	echo "${net}"
 }
 
+# 功能：读取指定 DNS 项的地址或端口，支持自定义端点及默认端口。
 get_dns_para(){
 	local type=$1
 	local numb=$2
@@ -2918,6 +3000,7 @@ get_dns_para(){
 	
 }
 
+# 功能：枚举需要经本地代理 relay 的可信 UDP DNS，以单元分隔格式输出目标和本地端口。
 iter_dns_udp_relay_targets(){
 	local sep="$(printf '\037')"
 	if [ "${ss_basic_dns_plan}" = "1" ];then
@@ -2935,10 +3018,12 @@ iter_dns_udp_relay_targets(){
 	fi
 }
 
+# 功能：判断是否存在需要生成 Xray UDP relay 的 DNS 目标。
 has_dns_udp_relay_targets(){
 	[ -n "$(iter_dns_udp_relay_targets | sed -n '1p')" ]
 }
 
+# 功能：把可信 UDP DNS 对应的 dokodemo-door relay 入口追加到正在拼装的 Xray 配置片段。
 gen_xray_dns_inbound(){
 	local config_file="$1"
 	local sep="$(printf '\037')"
@@ -2971,6 +3056,7 @@ EOF
 	return 0
 }
 
+# 功能：使用 jq 向完整 Xray 配置补充缺失的 DNS UDP relay 入口，避免重复端口。
 append_xray_dns_relay_inbounds(){
 	local config_file="$1"
 	local tmp_file="${config_file}.dnsrelay"
@@ -3046,6 +3132,7 @@ EOF
 	return 0
 }
 
+# 功能：IPv6 代理启用时确保配置具有 3333 端口的透明代理入口，缺失才追加。
 append_xray_ipv6_tproxy_inbound() {
 	local config_file="$1"
 	local tmp_file="${config_file}.ipv6"
@@ -3062,6 +3149,7 @@ append_xray_ipv6_tproxy_inbound() {
 	mv "${tmp_file}" "${config_file}"
 }
 
+# 功能：生成 chinadns-ng 上游 URI；可信 UDP DNS 指向本地 relay，其他协议直接格式化上游地址。
 get_dns(){
 	local type=$1
 	local numb=$2
@@ -3114,6 +3202,7 @@ get_dns(){
 	fi
 }
 
+# 功能：从内置规则、自定义名单及分流规则生成各域名/IP 集合，供 DNS 和防火墙分流使用。
 add_white_black() {
 	# 白名单： 
 	# 1. ignlist	 (ipv4 + ipv6保留地址, host地址如: router.asuscomm.com)
@@ -3335,6 +3424,7 @@ add_white_black() {
 	cp -rf /koolshare/ss/rules/block_list.txt /tmp
 }
 
+# 功能：生成 dnsmasq 的 fancyss 附加配置，将本机 DNS 请求接入当前 DNS 方案。
 create_dnsmasq_conf() {
 	# 0. delete pre settings
 	rm -rf /tmp/custom.conf
@@ -3363,11 +3453,13 @@ create_dnsmasq_conf() {
 	fi
 }
 
+# 功能：创建 S99/N99 shadowsocks 启动软链接，使 WAN 和 NAT 事件能够调用主脚本。
 auto_start() {
 	[ ! -L "/koolshare/init.d/S99shadowsocks.sh" ] && ln -sf /koolshare/ss/ssconfig.sh /koolshare/init.d/S99shadowsocks.sh
 	[ ! -L "/koolshare/init.d/N99shadowsocks.sh" ] && ln -sf /koolshare/ss/ssconfig.sh /koolshare/init.d/N99shadowsocks.sh
 }
 
+# 功能：启动 SSR 透明代理 rss-redir，并按 UDP 设置附加参数，随后启动本地 SOCKS5。
 start_ssr_redir() {
 	echo_date "开启ssr-redir进程，用于透明代理."
 	BIN=rss-redir
@@ -3389,6 +3481,7 @@ start_ssr_redir() {
 	start_ssr_local
 }
 
+# 功能：按多核设置启动一个或多个 rss-redir 实例，并写入对应 PID 文件。
 fire_redir() {
 	local ARG_1 ARG_2 ARG_3
 	if [ "$ss_basic_mcore" == "1" -a "${LINUX_VER}" != "26" ]; then
@@ -3403,6 +3496,7 @@ fire_redir() {
 	fi
 }
 
+# 功能：将 HTTP 伪装路径转换为 JSON 数组，空路径使用 [/]。
 get_path_empty() {
 	if [ -n "$1" ]; then
 		echo [\"$1\"]
@@ -3412,6 +3506,7 @@ get_path_empty() {
 }
 
 
+# 功能：将主机名转换为 JSON 数组，空值保留为空字符串数组元素。
 get_host_empty() {
 	if [ -n "$1" ]; then
 		echo [\"$1\"]
@@ -3420,6 +3515,7 @@ get_host_empty() {
 	fi
 }
 
+# 功能：将 1/0 开关转换为 JSON 布尔值 true/false。
 get_function_switch() {
 	case "$1" in
 	1)
@@ -3431,6 +3527,7 @@ get_function_switch() {
 	esac
 }
 
+# 功能：将 1/0 开关反向转换为 JSON 布尔值。
 get_reverse_switch() {
 	case "$1" in
 	1)
@@ -3442,6 +3539,7 @@ get_reverse_switch() {
 	esac
 }
 
+# 功能：将 gRPC 的 multi/gun 模式转换为 multiMode 所需的 JSON 布尔值。
 get_grpc_multimode(){
 	case "$1" in
 	multi)
@@ -3453,6 +3551,7 @@ get_grpc_multimode(){
 	esac
 }
 
+# 功能：生成 WebSocket Host 请求头 JSON，主机名为空时输出 null。
 get_ws_header() {
 	if [ -n "$1" ]; then
 		echo {\"Host\": \"$1\"}
@@ -3461,6 +3560,7 @@ get_ws_header() {
 	fi
 }
 
+# 功能：根据路径和主机名生成 Xray wsSettings，二者均为空时输出空对象。
 get_xray_ws_settings() {
 	local _path="$1"
 	local _host="$2"
@@ -3476,6 +3576,7 @@ get_xray_ws_settings() {
 	fi
 }
 
+# 功能：将主机名转换为 JSON 数组，空值输出 null。
 get_host() {
 	if [ -n "$1" ]; then
 		echo [\"$1\"]
@@ -3484,6 +3585,7 @@ get_host() {
 	fi
 }
 
+# 功能：生成 Shadowsocks HTTP 混淆使用的 Xray tcpSettings 和固定 HTTP 请求头。
 get_xray_ss_http_obfs_tcp_settings() {
 	local _host="$1"
 	local _host_json="[]"
@@ -3512,6 +3614,7 @@ get_xray_ss_http_obfs_tcp_settings() {
 	EOF
 }
 
+# 功能：生成 simple-obfs 辅助启动脚本，包含重复进程检查、后台启动及端口等待逻辑。
 write_ss_obfs_start_script() {
 	local _script="$1"
 	local _server="$2"
@@ -3553,6 +3656,7 @@ write_ss_obfs_start_script() {
 	chmod 755 "${_script}"
 }
 
+# 功能：执行已生成的 simple-obfs 辅助脚本，并检查 obfs-local 进程状态。
 start_ss_obfs_helper() {
 	local _script="/koolshare/ss/start-obfs.sh"
 
@@ -3562,6 +3666,7 @@ start_ss_obfs_helper() {
 	detect_running_status obfs-local /var/run/obfs_local.pid
 }
 
+# 功能：将非空值输出为 JSON 字符串，空值输出 JSON null。
 get_value_null(){
 	if [ -n "$1" ]; then
 		echo \"$1\"
@@ -3570,6 +3675,7 @@ get_value_null(){
 	fi
 }
 
+# 功能：将速度数值输出为带 mbps 单位的 JSON 字符串，空值输出 null。
 get_value_speed(){
 	if [ -n "$1" ]; then
 		echo \"${1}mbps\"
@@ -3578,6 +3684,7 @@ get_value_speed(){
 	fi
 }
 
+# 功能：将值输出为 JSON 字符串，空值仍保留为空字符串。
 get_value_empty(){
 	if [ -n "$1" ]; then
 		echo \"$1\"
@@ -3586,6 +3693,7 @@ get_value_empty(){
 	fi
 }
 
+# 功能：根据 Hysteria2 上下行设置选择拥塞算法：未设速度使用 bbr，否则使用 brutal 或用户选择。
 get_value_congestion(){
 	if [ -n "${ss_basic_hy2_up}" -a -n "${ss_basic_hy2_dl}" ]; then
 		if [ -z "${ss_basic_hy2_cg}" ];then
@@ -3600,6 +3708,7 @@ get_value_congestion(){
 	fi
 }
 
+# 功能：单端口时输出原端口；多端口或端口范围无法写入 settings.port 时输出 null。
 get_hy2_port(){
 	local _match1=$(echo $1 | grep -Eo ",")
 	local _match2=$(echo $1 | grep -Eo "-")
@@ -3612,6 +3721,7 @@ get_hy2_port(){
 	fi
 }
 
+# 功能：单端口时输出空字符串，多端口或端口范围时输出用于 UDP Hop 的端口字符串。
 get_hy2_udphop_port(){
 	local _match1=$(echo $1 | grep -Eo ",")
 	local _match2=$(echo $1 | grep -Eo "-")
@@ -3624,6 +3734,7 @@ get_hy2_udphop_port(){
 	fi
 }
 
+# 功能：组装 Hysteria2 finalmask.quicParams，包含拥塞、Brutal 速率及 UDP Hop 配置。
 get_hy2_quic_params(){
 	local _port="$1"
 	local _congestion="$(get_value_congestion ${ss_basic_hy2_cg})"
@@ -3659,6 +3770,7 @@ get_hy2_quic_params(){
 	echo "					}"
 }
 
+# 功能：在存在 QUIC 参数或 Salamander 混淆时，向 Hysteria2 outbound 追加 finalmask。
 append_hy2_finalmask(){
 	local _target_file="$1"
 	local _quic_params="$(get_hy2_quic_params "${ss_basic_hy2_port}")"
@@ -3696,6 +3808,186 @@ append_hy2_finalmask(){
 	EOF
 }
 
+# 功能：从用户自定义 Xray JSON 中提取旧格式 outbound 或新格式 outbounds[0]，同时存在时以后者为准。
+# 参数：$1 为完整自定义 JSON 文件，$2 为单个 outbound 的输出文件。
+extract_xray_custom_outbound() {
+	local custom_file="$1"
+	local outbound_file="$2"
+
+	cat "${custom_file}" | run jq '
+		if .outbounds != null then
+			.outbounds[0]
+		elif .outbound != null then
+			.outbound
+		else
+			[]
+		end
+	' >"${outbound_file}"
+}
+
+# 功能：测试普通节点 Xray 配置；遇到 fingerprint 不兼容时移除后重试，失败则清理配置并终止。
+test_xray_node_config() {
+	local config_file="$1"
+	local config_temp="$2"
+
+	echo_date "测试Xray配置文件...."
+	test_xray_conf "${config_file}"
+	case $? in
+	0)
+		echo_date "测试结果：${_test_ret}"
+		echo_date "Xray配置文件通过测试!!!"
+		;;
+	2)
+		echo_date "测试结果：${_test_ret}"
+		echo_date "Xray配置文件没有通过测试，尝试删除fingerprint配置后重试！"
+		run jq 'del(.. | .fingerprint?)' "${config_file}" | run sponge "${config_file}"
+		test_xray_conf "${config_file}"
+		case $? in
+		0)
+			echo_date "测试结果：${_test_ret}"
+			echo_date "Xray配置文件通过测试!!!"
+			;;
+		*)
+			echo_date "测试结果：${_test_ret}"
+			echo_date "Xray配置文件没有通过测试，请检查设置!!!"
+			rm -rf "${config_temp}" "${config_file}"
+			close_in_five flag
+			;;
+		esac
+		;;
+	*)
+		echo_date "测试结果：${_test_ret}"
+		echo_date "Xray配置文件没有通过测试，请检查设置!!!"
+		rm -rf "${config_temp}" "${config_file}"
+		close_in_five flag
+		;;
+	esac
+}
+
+# 功能：以协议专属 outbound 为输入，统一组装公共 log、inbounds 和最终 Xray 配置。
+# 参数：$1 outbound 文件；$2 临时完整配置；$3 最终配置；$4 是否清理 null；$5 是否自定义 JSON；$6 是否测试配置。
+# 副作用：写入最终 JSON，补充 DNS relay/IPv6 入口；自定义 JSON 还会回写节点原始服务器地址。
+build_xray_node_config() {
+	local outbound_file="$1"
+	local config_temp="$2"
+	local config_file="$3"
+	local strip_nulls="${4:-0}"
+	local custom_json="${5:-0}"
+	local test_config="${6:-0}"
+	local parse_file="${config_temp}.parse"
+	local strip_file="${config_temp}.strip"
+	local custom_clients=""
+	local custom_stream_settings=""
+
+	# 保留自定义JSON旧模板中的null字段，避免重构改变最终配置。
+	if [ "${custom_json}" = "1" ];then
+		custom_clients=',
+			"clients": null'
+		custom_stream_settings=',
+		"streamSettings": null'
+	fi
+
+	if [ ! -s "${outbound_file}" ];then
+		echo_date "错误：没有生成Xray outbound配置！"
+		close_in_five flag
+	fi
+
+	rm -rf "${config_temp}"
+	cat >"${config_temp}" <<-'EOF'
+	{
+		"log": {
+			"access": "/tmp/upload/xray_access.log",
+			"error": "/tmp/upload/xray_error.log",
+			"loglevel": "debug"
+		},
+		"inbounds": [
+	EOF
+
+	# 普通表单节点在固定入站前生成DNS relay；自定义JSON沿用原追加方式。
+	if [ "${custom_json}" != "1" ];then
+		gen_xray_dns_inbound "${config_temp}"
+	fi
+
+	cat >>"${config_temp}" <<-EOF
+		{
+			"port": 23456,
+			"listen": "127.0.0.1",
+			"protocol": "socks",
+			"settings": {
+				"auth": "noauth",
+				"udp": true,
+				"ip": "127.0.0.1"${custom_clients}
+			}${custom_stream_settings}
+		},
+		{
+			"listen": "0.0.0.0",
+			"port": 3333,
+			"protocol": "dokodemo-door",
+			"settings": {
+				"network": "tcp,udp",
+				"followRedirect": true
+			}
+		}
+		],
+		"outbounds": [
+	EOF
+	cat "${outbound_file}" >>"${config_temp}"
+	cat >>"${config_temp}" <<-'EOF'
+		]
+	}
+	EOF
+
+	if [ "${strip_nulls}" = "1" ] && [ "${custom_json}" != "1" ];then
+		run jq 'del(.. | nulls)' "${config_temp}" >"${strip_file}" 2>/dev/null && mv "${strip_file}" "${config_temp}"
+	fi
+	if [ "${custom_json}" != "1" ] && [ "${LINUX_VER}" = "26" ];then
+		sed -i '/tcpFastOpen/d' "${config_temp}" 2>/dev/null
+	fi
+
+	echo_date "解析Xray配置文件..."
+	if ! run jq --tab . "${config_temp}" >"${parse_file}" 2>&1;then
+		echo_date "json配置解析错误，错误信息如下："
+		echo_date $(cat "${parse_file}")
+		echo_date "请更正你的错误然后重试！！"
+		rm -rf "${parse_file}"
+		close_in_five flag
+	fi
+	if ! run jq --tab . "${config_temp}" >"${config_file}";then
+		echo_date "错误：Xray配置文件写入失败！"
+		close_in_five flag
+	fi
+	echo_date "Xray配置文件写入成功到${config_file}"
+
+	if [ "${custom_json}" = "1" ];then
+		if [ -n "${ss_basic_server}" ];then
+			rewrite_xray_like_outbound_server "${config_file}" "${ss_basic_server}"
+		fi
+		if ! append_xray_dns_relay_inbounds "${config_file}";then
+			echo_date "错误：追加DNS UDP relay入口到Xray配置文件失败！"
+			close_in_five flag
+		fi
+		if [ -n "${ss_basic_server_orig}" ];then
+			fss_set_current_node_field_plain server "${ss_basic_server_orig}"
+		else
+			echo_date "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+			echo_date "+       没有检测到你的Xray服务器地址，如果你确定你的配置是正确的        +"
+			echo_date "+   请自行将Xray服务器的ip地址填入【IP/CIDR】黑名单中，以确保正常使用   +"
+			echo_date "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		fi
+	fi
+
+	if ! append_xray_ipv6_tproxy_inbound "${config_file}";then
+		echo_date "错误：追加IPv6透明代理入口到Xray配置文件失败！"
+		close_in_five flag
+	fi
+
+	rm -f "${outbound_file}" "${parse_file}" "${strip_file}" >/dev/null 2>&1
+	if [ "${test_config}" = "1" ];then
+		test_xray_node_config "${config_file}" "${config_temp}"
+	fi
+}
+
+# 功能：生成 VMess 表单或自定义 JSON 的专属 outbound，再交给公共 Xray 组装器生成并测试配置。
 creat_vmess_json() {
 	if [ -z "{WEB_ACTION}" ]; then
 		if [ -n "${WAN_ACTION}" ]; then
@@ -3706,8 +3998,9 @@ creat_vmess_json() {
 		echo_date "创建vmess配置文件到${VMESS_CONFIG_FILE}"
 	fi
 	
-	rm -rf "${VMESS_CONFIG_TEMP}"
-	rm -rf "${VMESS_CONFIG_FILE}"
+	local outbound_file="${VMESS_CONFIG_TEMP}.outbound"
+	local custom_json="0"
+	rm -rf "${VMESS_CONFIG_TEMP}" "${VMESS_CONFIG_FILE}" "${outbound_file}"
 	if [ "${ss_basic_v2ray_use_json}" != "1" ]; then
 		echo_date 生成vmess协议配置文件...
 		local tcp="null"
@@ -3857,50 +4150,9 @@ creat_vmess_json() {
 				}"
 			;;
 		esac
-		# log area
-		cat >"${VMESS_CONFIG_TEMP}" <<-EOF
+		# outbound area：公共log/inbounds由build_xray_node_config统一生成。
+		cat >"${outbound_file}" <<-EOF
 			{
-			"log": {
-				"access": "none",
-				"error": "none",
-				"loglevel": "none"
-			},
-		EOF
-		
-		# inbounds area (23456 for socks5)
-		cat >>"$VMESS_CONFIG_TEMP" <<-EOF
-			"inbounds": [
-		EOF
-
-		# when user use udp trust dns in chinadns-ng
-		gen_xray_dns_inbound ${VMESS_CONFIG_TEMP}
-		
-		cat >>"$VMESS_CONFIG_TEMP" <<-EOF
-				{
-					"port": 23456,
-					"listen": "127.0.0.1",
-					"protocol": "socks",
-					"settings": {
-						"auth": "noauth",
-						"udp": true,
-						"ip": "127.0.0.1"
-					}
-				},
-				{
-					"listen": "0.0.0.0",
-					"port": 3333,
-					"protocol": "dokodemo-door",
-					"settings": {
-						"network": "tcp,udp",
-						"followRedirect": true
-					}
-				}
-			],
-		EOF
-		# outbounds area
-		cat >>"$VMESS_CONFIG_TEMP" <<-EOF
-			"outbounds": [
-				{
 					"tag": "proxy",
 					"protocol": "vmess",
 					"settings": {
@@ -3934,132 +4186,21 @@ creat_vmess_json() {
 						"concurrency": $ss_basic_v2ray_mux_concurrency
 					}
 				}
-			]
-			}
 		EOF
-		echo_date "解析vmess协议配置文件..."
-		run jq 'del(.. | nulls)' ${VMESS_CONFIG_TEMP} > /tmp/jq_strip_tmp.txt 2>/dev/null && mv /tmp/jq_strip_tmp.txt ${VMESS_CONFIG_TEMP}
-		run jq --tab . ${VMESS_CONFIG_TEMP} >/tmp/jq_para_tmp.txt 2>&1
-		if [ "$?" != "0" ];then
-			echo_date "json配置解析错误，错误信息如下："
-			echo_date $(cat /tmp/jq_para_tmp.txt) 
-			echo_date "请更正你的错误然后重试！！"
-			rm -rf /tmp/jq_para_tmp.txt
-			close_in_five flag
-		fi
-		run jq --tab . $VMESS_CONFIG_TEMP >"${VMESS_CONFIG_FILE}"
-		echo_date "$vmess协议配置文件写入成功到${VMESS_CONFIG_FILE}"
-		if ! append_xray_ipv6_tproxy_inbound "${VMESS_CONFIG_FILE}"; then
-			echo_date "错误：追加IPv6透明代理入口到${VCORE_NAME}配置文件失败！"
-			close_in_five flag
-		fi
 	else
+		custom_json="1"
 		echo_date "使用自定义的${VCORE_NAME} json配置文件..."
 		echo "$ss_basic_v2ray_json" | base64_decode >"$VMESS_CONFIG_TEMP"
-		local OB=$(cat "$VMESS_CONFIG_TEMP" | run jq .outbound)
-		local OBS=$(cat "$VMESS_CONFIG_TEMP" | run jq .outbounds)
-
-		# 兼容旧格式：outbound
-		if [ "$OB" != "null" ]; then
-			OUTBOUNDS=$(cat "$VMESS_CONFIG_TEMP" | run jq .outbound)
-		fi
-		
-		# 新格式：outbound[]
-		if [ "$OBS" != "null" ]; then
-			OUTBOUNDS=$(cat "$VMESS_CONFIG_TEMP" | run jq .outbounds[0])
-		fi
-		local TEMPLATE="{
-							\"log\": {
-								\"access\": \"none\",
-								\"error\": \"none\",
-								\"loglevel\": \"none\"
-							},
-							\"inbounds\": [
-								{
-									\"port\": 23456,
-									\"listen\": \"127.0.0.1\",
-									\"protocol\": \"socks\",
-									\"settings\": {
-										\"auth\": \"noauth\",
-										\"udp\": true,
-										\"ip\": \"127.0.0.1\",
-										\"clients\": null
-									},
-									\"streamSettings\": null
-								},
-								{
-									\"listen\": \"0.0.0.0\",
-									\"port\": 3333,
-									\"protocol\": \"dokodemo-door\",
-									\"settings\": {
-										\"network\": \"tcp,udp\",
-										\"followRedirect\": true
-									}
-								}
-							]
-						}"
-		echo_date "解析${VCORE_NAME}配置文件..."
-		echo ${TEMPLATE} | run jq --argjson args "$OUTBOUNDS" '. + {outbounds: [$args]}' >"$VMESS_CONFIG_FILE"
-		echo_date "${VCORE_NAME}配置文件写入成功到$VMESS_CONFIG_FILE"
-		if [ -n "${ss_basic_server}" ];then
-			rewrite_xray_like_outbound_server "${VMESS_CONFIG_FILE}" "${ss_basic_server}"
-		fi
-		if ! append_xray_dns_relay_inbounds "${VMESS_CONFIG_FILE}"; then
-			echo_date "错误：追加DNS UDP relay入口到${VCORE_NAME}配置文件失败！"
+		if ! extract_xray_custom_outbound "${VMESS_CONFIG_TEMP}" "${outbound_file}";then
+			echo_date "自定义Xray JSON解析失败，请检查配置！"
 			close_in_five flag
-		fi
-		if ! append_xray_ipv6_tproxy_inbound "${VMESS_CONFIG_FILE}"; then
-			echo_date "错误：追加IPv6透明代理入口到${VCORE_NAME}配置文件失败！"
-			close_in_five flag
-		fi
-
-		if [ -n "${ss_basic_server_orig}" ]; then
-			fss_set_current_node_field_plain server "${ss_basic_server_orig}"
-		else
-			echo_date "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-			echo_date "+       没有检测到你的${VCORE_NAME}服务器地址，如果你确定你的配置是正确的        +"
-			echo_date "+   请自行将${VCORE_NAME}服务器的ip地址填入【IP/CIDR】黑名单中，以确保正常使用   +"
-			echo_date "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 		fi
 	fi
 
-	# test v2ray Configuration generated from user json then run by xray
-	echo_date "测试${VCORE_NAME}配置文件...."
-	test_xray_conf $VMESS_CONFIG_FILE
-	case $? in
-	0)
-		echo_date "测试结果：${_test_ret}"
-		echo_date "${VCORE_NAME}配置文件通过测试!!!"
-		;;
-	2)
-		echo_date "测试结果：${_test_ret}"
-		echo_date "${VCORE_NAME}配置文件没有通过测试，尝试删除fingerprint配置后重试！"
-		run jq 'del(.. | .fingerprint?)' $VMESS_CONFIG_FILE | run sponge $VMESS_CONFIG_FILE
-		test_xray_conf $VMESS_CONFIG_FILE
-		case $? in
-		0)
-			echo_date "测试结果：${_test_ret}"
-			echo_date "${VCORE_NAME}配置文件通过测试!!!"
-			;;
-		*)
-			echo_date "测试结果：${_test_ret}"
-			echo_date "${VCORE_NAME}配置文件没有通过测试，请检查设置!!!"
-			rm -rf "$VMESS_CONFIG_TEMP"
-			rm -rf "$VMESS_CONFIG_FILE"
-			close_in_five flag
-			;;
-		esac
-		;;
-	*)
-		echo_date "测试结果：${_test_ret}"
-		echo_date "${VCORE_NAME}配置文件没有通过测试，请检查设置!!!"
-		rm -rf "$VMESS_CONFIG_TEMP"
-		rm -rf "$VMESS_CONFIG_FILE"
-		close_in_five flag
-		;;
-	esac
+	build_xray_node_config "${outbound_file}" "${VMESS_CONFIG_TEMP}" "${VMESS_CONFIG_FILE}" "1" "${custom_json}" "1"
 }
 
+# 功能：生成 Shadowsocks 专属 outbound，处理 HTTP/TLS 混淆及辅助进程后组装 Xray 配置。
 creat_xray_ss_json() {
 	if [ -z "${WEB_ACTION}" ]; then
 		# 非web提交
@@ -4072,48 +4213,10 @@ creat_xray_ss_json() {
 		echo_date "创建$(__get_type_abbr_name)节点配置文件到${VLESS_CONFIG_FILE}"
 	fi
 	rm -f /koolshare/ss/start-obfs.sh >/dev/null 2>&1
+	local outbound_file="${SS_CONFIG_TEMP}.outbound"
+	rm -rf "${SS_CONFIG_TEMP}" "${outbound_file}"
 
-	# log area
-	cat >"${SS_CONFIG_TEMP}" <<-EOF
-		{
-		"log": {
-			"access": "none",
-			"error": "none",
-			"loglevel": "none"
-		},
-	EOF
-	
-	# inbounds area (23456 for socks5)
-	cat >>"${SS_CONFIG_TEMP}" <<-EOF
-		"inbounds": [
-	EOF
-
-	# when user use udp trust dns in chinadns-ng
-	gen_xray_dns_inbound ${SS_CONFIG_TEMP}
-	
-	cat >>"${SS_CONFIG_TEMP}" <<-EOF
-			{
-				"port": 23456,
-				"listen": "127.0.0.1",
-				"protocol": "socks",
-				"settings": {
-					"auth": "noauth",
-					"udp": true,
-					"ip": "127.0.0.1"
-				}
-			},
-			{
-				"listen": "0.0.0.0",
-				"port": 3333,
-				"protocol": "dokodemo-door",
-				"settings": {
-					"network": "tcp,udp",
-					"followRedirect": true
-				}
-			}
-		],
-	EOF
-	# outbounds area
+	# 仅生成Shadowsocks专属outbound；obfs只影响该outbound及辅助进程。
 	local _xray_ss_server="${ss_basic_server}"
 	local _xray_ss_port="${ss_basic_port}"
 	local _xray_ss_uot="false"
@@ -4143,90 +4246,37 @@ creat_xray_ss_json() {
 		_xray_ss_uot="true"
 	fi
 
-	if [ "${ss_basic_ss_obfs}" = "http" -o "${ss_basic_ss_obfs}" = "tls" ]; then
-		# gen xray outbound
-		cat >>"${SS_CONFIG_TEMP}" <<-EOF
-			"outbounds": [
-				{
-					"tag": "proxy",
-					"protocol": "shadowsocks",
-					"settings": {
-						"servers": [
-							{
-								"address": "${_xray_ss_server}"
-								,"port": ${_xray_ss_port}
-								,"password": "${ss_basic_password}"
-								,"method": "${ss_basic_method}"
-								,"uot": ${_xray_ss_uot}
-							}
-						]
-					},
-					"streamSettings": {
-						"network": "${_xray_ss_network}"
-						${_xray_ss_tcp_settings_line}
-					},
-					"sockopt": {
-						"tcpFastOpen": $(get_function_switch ${ss_basic_tfo}),
-						"tcpMptcp": false,
-						"tcpcongestion": "bbr"
+	cat >"${outbound_file}" <<-EOF
+		{
+			"tag": "proxy",
+			"protocol": "shadowsocks",
+			"settings": {
+				"servers": [
+					{
+						"address": "${_xray_ss_server}"
+						,"port": ${_xray_ss_port}
+						,"password": "${ss_basic_password}"
+						,"method": "${ss_basic_method}"
+						,"uot": ${_xray_ss_uot}
 					}
-				}
-			]
+				]
+			},
+			"streamSettings": {
+				"network": "${_xray_ss_network}"
+				${_xray_ss_tcp_settings_line}
+			},
+			"sockopt": {
+				"tcpFastOpen": $(get_function_switch ${ss_basic_tfo}),
+				"tcpMptcp": false,
+				"tcpcongestion": "bbr"
 			}
-		EOF
-	else
-		# gen xray outbound
-		cat >>"${SS_CONFIG_TEMP}" <<-EOF
-			"outbounds": [
-				{
-					"tag": "proxy",
-					"protocol": "shadowsocks",
-					"settings": {
-						"servers": [
-							{
-								"address": "${ss_basic_server}"
-								,"port": ${ss_basic_port}
-								,"password": "${ss_basic_password}"
-								,"method": "${ss_basic_method}"
-								,"uot": false
-							}
-						]
-					},
-					"streamSettings": {
-						"network": "raw"
-					},
-					"sockopt": {
-						"tcpFastOpen": $(get_function_switch ${ss_basic_tfo}),
-						"tcpMptcp": false,
-						"tcpcongestion": "bbr"
-					}			
-				}
-			]
-			}
-		EOF
-	fi
-	
-	echo_date "解析Xray配置文件..."
-	run jq 'del(.. | nulls)' ${SS_CONFIG_TEMP} > /tmp/jq_strip_tmp.txt 2>/dev/null && mv /tmp/jq_strip_tmp.txt ${SS_CONFIG_TEMP}
-	if [ "${LINUX_VER}" == "26" ]; then
-		sed -i '/tcpFastOpen/d' ${SS_CONFIG_TEMP} 2>/dev/null
-	fi
-	run jq --tab . $SS_CONFIG_TEMP >/tmp/jq_para_tmp.txt 2>&1
-	if [ "$?" != "0" ];then
-		echo_date "json配置解析错误，错误信息如下："
-		echo_date $(cat /tmp/jq_para_tmp.txt) 
-		echo_date "请更正你的错误然后重试！！"
-		rm -rf /tmp/jq_para_tmp.txt
-		close_in_five flag
-	fi
-	run jq --tab . ${SS_CONFIG_TEMP} >${SS_CONFIG_FILE}
-	echo_date "Xray配置文件写入成功到${SS_CONFIG_FILE}"
-	if ! append_xray_ipv6_tproxy_inbound "${SS_CONFIG_FILE}"; then
-		echo_date "错误：追加IPv6透明代理入口到Xray配置文件失败！"
-		close_in_five flag
-	fi
+		}
+	EOF
+
+	build_xray_node_config "${outbound_file}" "${SS_CONFIG_TEMP}" "${SS_CONFIG_FILE}" "1" "0" "0"
 }
 
+# 功能：生成 VLESS/Xray 表单或自定义 JSON 的专属 outbound，再组装并测试 Xray 配置。
 creat_vless_json() {
 	if [ -z "{WEB_ACTION}" ]; then
 		if [ -n "${WAN_ACTION}" ]; then
@@ -4238,8 +4288,9 @@ creat_vless_json() {
 	fi
 
 	local tmp xray_server_ip
-	rm -rf "${VLESS_CONFIG_TEMP}"
-	rm -rf "${VLESS_CONFIG_FILE}"
+	local outbound_file="${VLESS_CONFIG_TEMP}.outbound"
+	local custom_json="0"
+	rm -rf "${VLESS_CONFIG_TEMP}" "${VLESS_CONFIG_FILE}" "${outbound_file}"
 	if [ "${ss_basic_xray_use_json}" != "1" ]; then
 		echo_date "生成Xray配置文件..."
 		local tcp="null"
@@ -4424,49 +4475,7 @@ creat_vless_json() {
 				}"
 			;;
 		esac
-		# log area
-		cat >"${VLESS_CONFIG_TEMP}" <<-EOF
-			{
-			"log": {
-				"access": "none",
-				"error": "none",
-				"loglevel": "none"
-			},
-		EOF
-		
-		# inbounds area (23456 for socks5)
-		cat >>"${VLESS_CONFIG_TEMP}" <<-EOF
-			"inbounds": [
-		EOF
-
-		# when user use udp trust dns in chinadns-ng
-		gen_xray_dns_inbound ${VLESS_CONFIG_TEMP}
-
-		# continue
-		cat >>"${VLESS_CONFIG_TEMP}" <<-EOF
-				{
-					"port": 23456,
-					"listen": "127.0.0.1",
-					"protocol": "socks",
-					"settings": {
-						"auth": "noauth",
-						"udp": true,
-						"ip": "127.0.0.1"
-					}
-				},
-				{
-					"listen": "0.0.0.0",
-					"port": 3333,
-					"protocol": "dokodemo-door",
-					"settings": {
-						"network": "tcp,udp",
-						"followRedirect": true
-					}
-				}
-			],
-		EOF
-		
-		# outbounds area
+		# outbound area：公共log/inbounds由build_xray_node_config统一生成。
 		local xray_user_json
 		if [ "${ss_basic_xray_prot}" = "vless" ];then
 			xray_user_json=$(cat <<-EOF
@@ -4483,9 +4492,8 @@ creat_vless_json() {
 			EOF
 			)
 		fi
-		cat >>"${VLESS_CONFIG_TEMP}" <<-EOF
-			"outbounds": [
-				{
+		cat >"${outbound_file}" <<-EOF
+			{
 					"tag": "proxy",
 					"protocol": "${ss_basic_xray_prot}",
 					"settings": {
@@ -4521,135 +4529,21 @@ ${xray_user_json}
 						"concurrency": -1
 					}
 				}
-			]
-			}
 		EOF
-		echo_date "解析Xray配置文件..."
-		run jq 'del(.. | nulls)' ${VLESS_CONFIG_TEMP} > /tmp/jq_strip_tmp.txt 2>/dev/null && mv /tmp/jq_strip_tmp.txt ${VLESS_CONFIG_TEMP}
-		if [ "${LINUX_VER}" == "26" ]; then
-			sed -i '/tcpFastOpen/d' ${VLESS_CONFIG_TEMP} 2>/dev/null
-		fi
-		run jq --tab . $VLESS_CONFIG_TEMP >/tmp/jq_para_tmp.txt 2>&1
-		if [ "$?" != "0" ];then
-			echo_date "json配置解析错误，错误信息如下："
-			echo_date $(cat /tmp/jq_para_tmp.txt) 
-			echo_date "请更正你的错误然后重试！！"
-			rm -rf /tmp/jq_para_tmp.txt
-			close_in_five flag
-		fi
-		run jq --tab . ${VLESS_CONFIG_TEMP} >${VLESS_CONFIG_FILE}
-		echo_date "Xray配置文件写入成功到${VLESS_CONFIG_FILE}"
-		if ! append_xray_ipv6_tproxy_inbound "${VLESS_CONFIG_FILE}"; then
-			echo_date "错误：追加IPv6透明代理入口到Xray配置文件失败！"
-			close_in_five flag
-		fi
 	else
+		custom_json="1"
 		echo_date "使用自定义的Xray json配置文件..."
 		echo "$ss_basic_xray_json" | base64_decode >"$VLESS_CONFIG_TEMP"
-		local OB=$(cat "$VLESS_CONFIG_TEMP" | run jq .outbound)
-		local OBS=$(cat "$VLESS_CONFIG_TEMP" | run jq .outbounds)
-
-		# 兼容旧格式：outbound
-		if [ "$OB" != "null" ]; then
-			OUTBOUNDS=$(cat "$VLESS_CONFIG_TEMP" | run jq .outbound)
-		fi
-		
-		# 新格式：outbound[]
-		if [ "$OBS" != "null" ]; then
-			OUTBOUNDS=$(cat "$VLESS_CONFIG_TEMP" | run jq .outbounds[0])
-		fi
-		local TEMPLATE="{
-							\"log\": {
-								\"access\": \"none\",
-								\"error\": \"none\",
-								\"loglevel\": \"none\"
-							},
-							\"inbounds\": [
-								{
-									\"port\": 23456,
-									\"listen\": \"127.0.0.1\",
-									\"protocol\": \"socks\",
-									\"settings\": {
-										\"auth\": \"noauth\",
-										\"udp\": true,
-										\"ip\": \"127.0.0.1\",
-										\"clients\": null
-									},
-									\"streamSettings\": null
-								},
-								{
-									\"listen\": \"0.0.0.0\",
-									\"port\": 3333,
-									\"protocol\": \"dokodemo-door\",
-									\"settings\": {
-										\"network\": \"tcp,udp\",
-										\"followRedirect\": true
-									}
-								}
-							]
-						}"
-		
-		echo_date "解析Xray配置文件..."
-		echo ${TEMPLATE} | run jq --argjson args "$OUTBOUNDS" '. + {outbounds: [$args]}' >"${VLESS_CONFIG_FILE}"
-		echo_date "Xray配置文件写入成功到${VLESS_CONFIG_FILE}"
-		if [ -n "${ss_basic_server}" ];then
-			rewrite_xray_like_outbound_server "${VLESS_CONFIG_FILE}" "${ss_basic_server}"
-		fi
-		if ! append_xray_dns_relay_inbounds "${VLESS_CONFIG_FILE}"; then
-			echo_date "错误：追加DNS UDP relay入口到Xray配置文件失败！"
+		if ! extract_xray_custom_outbound "${VLESS_CONFIG_TEMP}" "${outbound_file}";then
+			echo_date "自定义Xray JSON解析失败，请检查配置！"
 			close_in_five flag
-		fi
-		if ! append_xray_ipv6_tproxy_inbound "${VLESS_CONFIG_FILE}"; then
-			echo_date "错误：追加IPv6透明代理入口到Xray配置文件失败！"
-			close_in_five flag
-		fi
-
-		if [ -n "${ss_basic_server_orig}" ]; then
-			fss_set_current_node_field_plain server "${ss_basic_server_orig}"
-		else
-			echo_date "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-			echo_date "+       没有检测到你的Xray服务器地址，如果你确定你的配置是正确的        +"
-			echo_date "+   请自行将Xray服务器的ip地址填入【IP/CIDR】黑名单中，以确保正常使用   +"
-			echo_date "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 		fi
 	fi
-	
-	# test xray Configuration run by xray
-	test_xray_conf $VLESS_CONFIG_FILE
-	case $? in
-	0)
-		echo_date "测试结果：${_test_ret}"
-		echo_date "Xray配置文件通过测试!!!"
-		;;
-	2)
-		#echo_date "测试结果：${_test_ret}"
-		echo_date "Xray配置文件没有通过测试，尝试删除fingerprint配置后重试！"
-		run jq 'del(.. | .fingerprint?)' $VLESS_CONFIG_FILE | run sponge $VLESS_CONFIG_FILE
-		test_xray_conf $VLESS_CONFIG_FILE
-		case $? in
-		0)
-			echo_date "测试结果：${_test_ret}"
-			echo_date "Xray配置文件通过测试!!!"
-			;;
-		*)
-			echo_date "测试结果：${_test_ret}"
-			echo_date "Xray配置文件没有通过测试，请检查设置!!!"
-			rm -rf "$VLESS_CONFIG_TEMP"
-			rm -rf "$VLESS_CONFIG_FILE"
-			close_in_five flag
-			;;
-		esac
-		;;
-	*)
-		echo_date "测试结果：${_test_ret}"
-		echo_date "Xray配置文件没有通过测试，请检查设置!!!"
-		rm -rf "$VLESS_CONFIG_TEMP"
-		rm -rf "$VLESS_CONFIG_FILE"
-		close_in_five flag
-		;;
-	esac
+
+	build_xray_node_config "${outbound_file}" "${VLESS_CONFIG_TEMP}" "${VLESS_CONFIG_FILE}" "1" "${custom_json}" "1"
 }
 
+# 功能：构建包含多节点出站、路由、API 和统计的 Xray 分流配置，并执行兼容性测试。
 creat_shunt_json() {
 	local current_id=""
 	local shunt_config="/koolshare/ss/xray.json"
@@ -4696,6 +4590,7 @@ creat_shunt_json() {
 	esac
 }
 
+# 功能：设置 TFO、规则资源目录和 Go 内存限制，启动 Xray 主进程并注册内存看门狗。
 start_xray() {
 	# tfo start
 	if [ "${LINUX_VER}" != "26" ]; then
@@ -4742,6 +4637,7 @@ start_xray() {
 	fi
 }
 
+# 功能：生成 Trojan 专属 outbound，支持可选 WebSocket 混淆，再交给公共 Xray 组装器。
 creat_trojan_json(){
 	# do not create json file on start
 	if [ -z "${WEB_ACTION}" ]; then
@@ -4753,50 +4649,10 @@ creat_trojan_json(){
 		echo_date "创建xray的trojan配置文件到${TROJAN_CONFIG_FILE}"
 	fi
 
-	# trojan协议由xray来运行
-	rm -rf "${TROJAN_CONFIG_TEMP}"
-	rm -rf "${TROJAN_CONFIG_FILE}"
-	# log area
-	cat >"${TROJAN_CONFIG_TEMP}" <<-EOF
-		{
-		"log": {
-			"access": "none",
-			"error": "none",
-			"loglevel": "none"
-		},
-	EOF
+	# trojan协议由xray来运行；这里只生成Trojan专属outbound。
+	local outbound_file="${TROJAN_CONFIG_TEMP}.outbound"
+	rm -rf "${TROJAN_CONFIG_TEMP}" "${TROJAN_CONFIG_FILE}" "${outbound_file}"
 
-	# inbounds area (23456 for socks5)
-	cat >>"$TROJAN_CONFIG_TEMP" <<-EOF
-		"inbounds": [
-	EOF
-
-	# when user use udp trust dns in chinadns-ng
-	gen_xray_dns_inbound ${TROJAN_CONFIG_TEMP}
-	
-	cat >>"$TROJAN_CONFIG_TEMP" <<-EOF
-			{
-				"port": 23456,
-				"listen": "127.0.0.1",
-				"protocol": "socks",
-				"settings": {
-					"auth": "noauth",
-					"udp": true,
-					"ip": "127.0.0.1"
-				}
-			},
-			{
-				"listen": "0.0.0.0",
-				"port": 3333,
-				"protocol": "dokodemo-door",
-				"settings": {
-					"network": "tcp,udp",
-					"followRedirect": true
-				}
-			}
-		],
-	EOF
-	
 	if [ -n "${ss_basic_trojan_plugin}" -a "${ss_basic_trojan_plugin}" == "obfs-local" -a "${ss_basic_trojan_obfs}" == "websocket" ];then
 		echo_date "检测到该trojan节点为obfs-local WebSocket伪装，继续！"
 		local _trojan_network="ws"
@@ -4810,52 +4666,34 @@ creat_trojan_json(){
 	fi
 	
 	# outbounds area
-	cat >>"${TROJAN_CONFIG_TEMP}" <<-EOF
-		"outbounds": [
-			{
-				"protocol": "trojan",
-				"settings": {
-					"servers": [{
-					"address": "${ss_basic_server}",
-					"port": ${ss_basic_port},
-					"password": "${ss_basic_trojan_uuid}"
-					}]
-				},
-				"streamSettings": {
-					"network": "${_trojan_network}",
-					"security": "tls",
-					"tlsSettings": {
-						"serverName": $(get_value_null ${ss_basic_trojan_sni}),
-						"pinnedPeerCertSha256": $(get_value_empty ${ss_basic_trojan_pcs}),
-						"verifyPeerCertByName": $(get_value_empty ${ss_basic_trojan_vcn})
-					}
-					,"wsSettings": ${_trojan_ws}
-					,"sockopt": {"tcpFastOpen": $(get_function_switch ${ss_basic_trojan_tfo})}
+	cat >"${outbound_file}" <<-EOF
+		{
+			"protocol": "trojan",
+			"settings": {
+				"servers": [{
+				"address": "${ss_basic_server}",
+				"port": ${ss_basic_port},
+				"password": "${ss_basic_trojan_uuid}"
+				}]
+			},
+			"streamSettings": {
+				"network": "${_trojan_network}",
+				"security": "tls",
+				"tlsSettings": {
+					"serverName": $(get_value_null ${ss_basic_trojan_sni}),
+					"pinnedPeerCertSha256": $(get_value_empty ${ss_basic_trojan_pcs}),
+					"verifyPeerCertByName": $(get_value_empty ${ss_basic_trojan_vcn})
 				}
+				,"wsSettings": ${_trojan_ws}
+				,"sockopt": {"tcpFastOpen": $(get_function_switch ${ss_basic_trojan_tfo})}
 			}
-		]
 		}
 	EOF
-	echo_date "解析xray的trojan配置文件..."
-	if [ "${LINUX_VER}" == "26" ]; then
-		sed -i '/tcpFastOpen/d' ${TROJAN_CONFIG_TEMP} 2>/dev/null
-	fi
-	run jq --tab . ${TROJAN_CONFIG_TEMP} >/tmp/trojan_para_tmp.txt 2>&1
-	if [ "$?" != "0" ];then
-		echo_date "json配置解析错误，错误信息如下："
-		echo_date $(cat /tmp/trojan_para_tmp.txt) 
-		echo_date "请更正你的错误然后重试！！"
-		rm -rf /tmp/trojan_para_tmp.txt
-		close_in_five flag
-	fi
-	run jq --tab . ${TROJAN_CONFIG_TEMP} >${TROJAN_CONFIG_FILE}
-	echo_date "解析成功！xray的trojan配置文件成功写入到${TROJAN_CONFIG_FILE}"
-	if ! append_xray_ipv6_tproxy_inbound "${TROJAN_CONFIG_FILE}"; then
-		echo_date "错误：追加IPv6透明代理入口到Xray配置文件失败！"
-		close_in_five flag
-	fi
+
+	build_xray_node_config "${outbound_file}" "${TROJAN_CONFIG_TEMP}" "${TROJAN_CONFIG_FILE}" "0" "0" "0"
 }
 
+# 功能：设置 TFO 和内存限制，使用 Trojan 配置启动 Xray 并注册内存看门狗。
 start_trojan(){
 	# tfo
 	if [ "${LINUX_VER}" != "26" ]; then
@@ -4884,6 +4722,7 @@ start_trojan(){
 	fi
 }
 
+# 功能：生成 Hysteria2 专属 outbound，包括 TLS、拥塞和 finalmask，再组装 Xray 配置。
 creat_hy2_json(){
 	# do not create json file on start
 	if [ -z "${WEB_ACTION}" ]; then
@@ -4895,51 +4734,9 @@ creat_hy2_json(){
 		echo_date "创建xray的hysteria2配置文件到${HY2_CONFIG_FILE}"
 	fi
 
-	# hysteria2协议由xray来运行
-	rm -rf "${HY2_CONFIG_TEMP}"
-	rm -rf "${HY2_CONFIG_FILE}"
-	
-	# log area
-	cat >"${HY2_CONFIG_TEMP}" <<-EOF
-		{
-		"log": {
-			"access": "none",
-			"error": "none",
-			"loglevel": "none"
-		},
-	EOF
-	
-	# inbounds area (23456 for socks5)
-	cat >>"$HY2_CONFIG_TEMP" <<-EOF
-		"inbounds": [
-	EOF
-
-	# when user use udp trust dns in chinadns-ng
-	gen_xray_dns_inbound ${HY2_CONFIG_TEMP}
-	
-	# continue
-	cat >>"$HY2_CONFIG_TEMP" <<-EOF
-			{
-				"port": 23456,
-				"listen": "127.0.0.1",
-				"protocol": "socks",
-				"settings": {
-					"auth": "noauth",
-					"udp": true,
-					"ip": "127.0.0.1"
-				}
-			},
-			{
-				"listen": "0.0.0.0",
-				"port": 3333,
-				"protocol": "dokodemo-door",
-				"settings": {
-					"network": "tcp,udp",
-					"followRedirect": true
-				}
-			}
-		],
-	EOF
+	# hysteria2协议由xray来运行；这里只生成Hysteria2专属outbound。
+	local outbound_file="${HY2_CONFIG_TEMP}.outbound"
+	rm -rf "${HY2_CONFIG_TEMP}" "${HY2_CONFIG_FILE}" "${outbound_file}"
 
 	if [ -z "${ss_basic_hy2_sni}" ];then
 		__valid_ip_silent "${ss_basic_hy2_server}"
@@ -4988,9 +4785,8 @@ creat_hy2_json(){
 	fi
 	
 	# outbounds area
-	cat >>"${HY2_CONFIG_TEMP}" <<-EOF
-		"outbounds": [
-			{
+	cat >"${outbound_file}" <<-EOF
+		{
 				"protocol": "hysteria",
 				"settings": {
 					"version": 2,
@@ -5008,45 +4804,28 @@ creat_hy2_json(){
 						"serverName": "${ss_basic_hy2_sni}"
 	EOF
 
-	cat >>"${HY2_CONFIG_TEMP}" <<-EOF
+	cat >>"${outbound_file}" <<-EOF
 						,"pinnedPeerCertSha256": $(get_value_empty ${ss_basic_hy2_pcs})
 						,"verifyPeerCertByName": $(get_value_empty ${ss_basic_hy2_vcn})
 	EOF
 	
-	cat >>"${HY2_CONFIG_TEMP}" <<-EOF
+	cat >>"${outbound_file}" <<-EOF
 						,"alpn": ["h3"]
 					}
 					,"sockopt": {"tcpFastOpen": $(get_function_switch ${ss_basic_hy2_tfo})}
 	EOF
 
-	append_hy2_finalmask "${HY2_CONFIG_TEMP}"
+	append_hy2_finalmask "${outbound_file}"
 					
-	cat >>"${HY2_CONFIG_TEMP}" <<-EOF
+	cat >>"${outbound_file}" <<-EOF
 				}
 			}
-		]
-		}
 	EOF
-	echo_date "解析xray的hysteria2配置文件..."
-	if [ "${LINUX_VER}" == "26" ]; then
-		sed -i '/tcpFastOpen/d' ${HY2_CONFIG_TEMP} 2>/dev/null
-	fi
-	run jq --tab . ${HY2_CONFIG_TEMP} >/tmp/hy2_para_tmp.txt 2>&1
-	if [ "$?" != "0" ];then
-		echo_date "json配置解析错误，错误信息如下："
-		echo_date $(cat /tmp/hy2_para_tmp.txt) 
-		echo_date "请更正你的错误然后重试！！"
-		#rm -rf /tmp/hy2_para_tmp.txt
-		close_in_five flag
-	fi
-	run jq --tab . ${HY2_CONFIG_TEMP} >${HY2_CONFIG_FILE}
-	echo_date "解析成功！xray的hysteria2配置文件成功写入到${HY2_CONFIG_FILE}"
-	if ! append_xray_ipv6_tproxy_inbound "${HY2_CONFIG_FILE}"; then
-		echo_date "错误：追加IPv6透明代理入口到Xray配置文件失败！"
-		close_in_five flag
-	fi
+
+	build_xray_node_config "${outbound_file}" "${HY2_CONFIG_TEMP}" "${HY2_CONFIG_FILE}" "0" "0" "0"
 }
 
+# 功能：设置 TFO 和内存限制，使用 Hysteria2 配置启动 Xray 并注册内存看门狗。
 start_hy2(){
 	# tfo
 	if [ "${LINUX_VER}" != "26" ]; then
@@ -5076,6 +4855,7 @@ start_hy2(){
 }
 
 
+# 功能：检查 NaïveProxy 二进制和节点参数，启动 ipt2socks 与 NaïveProxy 客户端。
 start_naive(){
 	if [ -f "/koolshare/bin/naive" ];then
 		chmod +x /koolshare/bin/naive
@@ -5110,6 +4890,7 @@ start_naive(){
 	detect_running_status2 naive 23456
 }
 
+# 功能：从用户 JSON 提取 relay 生成 tuic.json，处理服务器解析后启动 ipt2socks 和 tuic-client。
 start_tuic(){
 	if [ -f "/koolshare/bin/tuic-client" ];then
 		chmod +x /koolshare/bin/tuic-client
@@ -5184,6 +4965,7 @@ start_tuic(){
 	detect_running_status tuic-client
 }
 
+# 功能：拼接 AnyTLS 服务器地址和端口，IPv6 地址自动使用方括号。
 anytls_hostport() {
 	local host="$1"
 	local port="$2"
@@ -5205,6 +4987,7 @@ anytls_hostport() {
 	esac
 }
 
+# 功能：校验 AnyTLS 参数和二进制，写入临时密码文件并启动 ipt2socks 与 anytls-zig。
 start_anytls(){
 	local ret=""
 	local server_addr=""
@@ -5266,6 +5049,7 @@ start_anytls(){
 	detect_running_status3 anytls-zig 23456 1 force
 }
 
+# 功能：按页面设置创建规则更新、节点订阅和 Web 落地延迟检测的定时任务。
 write_cron_job() {
 	# 定时规则更新
 	sed -i '/ssupdate/d' /var/spool/cron/crontabs/* >/dev/null 2>&1
@@ -5301,6 +5085,7 @@ write_cron_job() {
 	fi
 }
 
+# 功能：删除规则、订阅、延迟检测及 Xray 内存看门狗等插件定时任务。
 kill_cron_job() {
 	if [ -n "$(cru l | grep ssupdate)" ]; then
 		echo_date "删除fancyss规则定时更新任务..."
@@ -5319,6 +5104,7 @@ kill_cron_job() {
 	fi
 }
 #--------------------------------------nat part begin------------------------------------------------
+# 功能：加载透明代理所需的 xt_TPROXY、xt_socket 和 xt_comment 内核模块。
 load_tproxy() {
 	MODULES="xt_TPROXY xt_socket xt_comment"
 	for MODULE in ${MODULES}
@@ -5333,6 +5119,7 @@ load_tproxy() {
 	done
 }
 
+# 功能：清空并销毁插件使用的 IPv4/IPv6 ipset，同时清理 310 策略路由和本地路由。
 flush_ipset() {
 	# flush ipset
 	local existing_sets=""
@@ -5400,6 +5187,7 @@ EOF
 	ip route del local 0.0.0.0/0 dev lo table 310 >/dev/null 2>&1
 }
 
+# 功能：把指定表中匹配的链和规则转换为删除命令，追加到 iptables-restore 清理文件。
 flush_iptables_restore_append() {
 	local ipt="$1"
 	local table="$2"
@@ -5443,6 +5231,7 @@ EOF
 	return 0
 }
 
+# 功能：批量清理失败时的兼容路径：逐条删除匹配规则，再清空并删除自定义链。
 flush_iptables_legacy_table() {
 	local ipt="$1"
 	local table="$2"
@@ -5475,6 +5264,7 @@ EOF
 }
 
 # creat ipset rules
+# 功能：通过 ipset restore 批量创建并清空名单集合，同时导入中国大陆 IPv4/IPv6 网段。
 creat_ipset() {
 	echo_date "创建ipset名单"
 	local chnroute4_file="/koolshare/ss/rules/chnroute.txt"
@@ -5532,6 +5322,7 @@ creat_ipset() {
 	} | ipset -R
 }
 
+# 功能：将代理模式映射为 IPv4 的 RETURN、GFW、CHN、GAM、GLO、HOM 或 SHU 目标链。
 get_action_chain() {
 	case "$1" in
 	0)
@@ -5562,6 +5353,7 @@ get_action_chain() {
 	esac
 }
 
+# 功能：将代理模式映射为对应的 IPv6 防火墙目标链。
 get_action_chain6() {
 	case "$1" in
 	0)
@@ -5592,6 +5384,7 @@ get_action_chain6() {
 	esac
 }
 
+# 功能：将代理模式数值转换为用于日志和页面的中文名称。
 get_mode_name() {
 	case "$1" in
 	0)
@@ -5618,6 +5411,7 @@ get_mode_name() {
 	esac
 }
 
+# 功能：拼接 iptables 选项和值；任一参数为空时输出空字符串，便于构造可选规则片段。
 factor() {
 	if [ -z "$1" -o -z "$2" ]; then
 		echo ""
@@ -5626,6 +5420,7 @@ factor() {
 	fi
 }
 
+# 功能：将代理模式转换为 iptables 动作：不代理使用 -j，其他模式使用 -g 跳转。
 get_jump_mode() {
 	case "$1" in
 	0)
@@ -5637,11 +5432,13 @@ get_jump_mode() {
 	esac
 }
 
+# 功能：访问控制层判断当前代理核心是否具备 UDP 代理能力。
 acl_proxy_supports_udp() {
 	proxy_core_supports_udp || return 1
 	return 0
 }
 
+# 功能：每次运行仅提示一次 UDP 不受支持，并记录已提示标记。
 note_acl_udp_unsupported_once() {
 	if [ "${ACL_UDP_UNSUPPORTED_NOTICE}" != "1" ]; then
 		echo_date "⚠️因当前节点协议不支持UDP代理，访问控制中的UDP代理开关将被忽略，并默认屏蔽对应规则的QUIC流量。"
@@ -5649,6 +5446,7 @@ note_acl_udp_unsupported_once() {
 	fi
 }
 
+# 功能：每次运行仅提示一次因 UDP 代理关闭而强制屏蔽 QUIC 的处理。
 note_acl_quic_forced_once() {
 	if [ "${ACL_QUIC_FORCED_NOTICE}" != "1" ]; then
 		echo_date "⚠️检测到访问控制存在“UDP代理关闭且未屏蔽QUIC”的组合，已自动按“屏蔽QUIC”处理。"
@@ -5656,6 +5454,7 @@ note_acl_quic_forced_once() {
 	fi
 }
 
+# 功能：解析访问控制的 UDP 开关；游戏模式强制开启，核心不支持时强制关闭。
 get_acl_udp_flag() {
 	local acl="$1"
 	local proxy_mode="$2"
@@ -5690,6 +5489,7 @@ get_acl_udp_flag() {
 	echo "${udp_flag}"
 }
 
+# 功能：解析访问控制的 QUIC 屏蔽开关，并在 UDP 不可用或未代理时执行安全默认策略。
 get_acl_quic_flag() {
 	local acl="$1"
 	local proxy_mode="$2"
@@ -5723,6 +5523,7 @@ get_acl_quic_flag() {
 	echo "${quic_flag}"
 }
 
+# 功能：为 IPv4 访问控制生成 CIDR、IP 或 MAC 来源匹配参数。
 get_acl_source_rule4() {
 	local acl="$1"
 	local ipaddr=""
@@ -5740,6 +5541,7 @@ get_acl_source_rule4() {
 	fi
 }
 
+# 功能：为 IPv6 访问控制生成 MAC 来源匹配参数；CIDR 或缺少 MAC 的规则返回不可用。
 get_acl_source_rule6() {
 	local acl="$1"
 	local ipaddr=""
@@ -5751,6 +5553,7 @@ get_acl_source_rule6() {
 	echo "-m mac --mac-source ${acl_mac}"
 }
 
+# 功能：写入单条 IPv4 访问控制的 UDP 代理、直连及 QUIC 443 预过滤规则。
 apply_acl_udp_rule() {
 	local acl_desc="$1"
 	local source_rule="$2"
@@ -5780,6 +5583,7 @@ apply_acl_udp_rule() {
 	fi
 }
 
+# 功能：写入单条 IPv4 访问控制的 UDP 443 放行或按模式屏蔽规则。
 apply_acl_quic_filter_rule() {
 	local acl_desc="$1"
 	local source_rule="$2"
@@ -5801,6 +5605,7 @@ apply_acl_quic_filter_rule() {
 	fi
 }
 
+# 功能：用中文顿号拼接访问控制描述列表，自动处理空列表。
 append_acl_desc_list() {
 	local current="$1"
 	local value="$2"
@@ -5813,6 +5618,7 @@ append_acl_desc_list() {
 	fi
 }
 
+# 功能：整理可用于 IPv6 的 MAC 访问控制规则，统计被跳过的 CIDR/无 MAC 项并确定默认主机策略。
 resolve_ipv6_default_acl() {
 	local acl_nu=$(get_acl_rule_indexes)
 	local acl=""
@@ -5857,6 +5663,7 @@ resolve_ipv6_default_acl() {
 	IPV6_ACL_DEFAULT_PORTS="$(resolve_acl_ports "$(resolve_acl_default_ports_raw)" "${IPV6_ACL_DEFAULT_MODE}")"
 }
 
+# 功能：写入单条 IPv6 访问控制的 UDP 代理、直连及 QUIC 443 预过滤规则。
 apply_acl_udp_rule6() {
 	local acl_desc="$1"
 	local source_rule="$2"
@@ -5886,6 +5693,7 @@ apply_acl_udp_rule6() {
 	fi
 }
 
+# 功能：写入单条 IPv6 访问控制的 UDP 443 放行或按模式屏蔽规则。
 apply_acl_quic_filter_rule6() {
 	local acl_desc="$1"
 	local source_rule="$2"
@@ -5907,6 +5715,7 @@ apply_acl_quic_filter_rule6() {
 	fi
 }
 
+# 功能：为自定义访问控制主机及默认主机应用 IPv4 QUIC/UDP 443 过滤规则。
 apply_quic_block() {
 	# lan access control
 	local default_mode=""
@@ -5932,6 +5741,7 @@ apply_quic_block() {
 	fi
 }
 
+# 功能：应用按设备划分的 IPv4 TCP/UDP 代理、端口和默认主机访问控制规则，并清理临时 DBus 字段。
 lan_access_control() {
 	# lan access control
 	local default_mode=""
@@ -5992,6 +5802,7 @@ lan_access_control() {
 	dbus remove ss_acl_quic
 }
 
+# 功能：按网桥生成 IPv4 或 IPv6 DNS 劫持规则，尊重不代理设备并跳过无可用地址的接口。
 dns_hijack_control() {
 	local type=${1:-4}
 	if [ "${type}" == "4" ];then
@@ -6045,6 +5856,7 @@ dns_hijack_control() {
 	fi
 }
 
+# 功能：优先通过 restore 批量清除 IPv4/IPv6 插件规则，失败时逐条清理，并移除 IPv6 策略路由。
 flush_iptables() {
 	# use different xtables libdir
 	local restore_v4="/tmp/fss_iptables_flush.$$"
@@ -6094,6 +5906,7 @@ flush_iptables() {
 	ip -6 route del local ::/0 dev lo table 310 >/dev/null 2>&1
 }
 
+# 功能：停止 chinadns-ng 和 SmartDNS 进程，并清理对应的 perp 管理目录。
 stop_dns_process() {
 	local CHNG_PID=$(pidof chinadns-ng)
 	if [ -n "${CHNG_PID}" ];then
@@ -6114,6 +5927,7 @@ stop_dns_process() {
 
 }
 
+# 功能：使用兼容方式清除 IPv6 NAT、mangle、filter 插件规则及 310 策略路由。
 flush_ip6tables() {
 	if [ -d "/tmp/.xt" ];then
 		export XTABLES_LIBDIR=/tmp/.xt
@@ -6184,6 +5998,7 @@ flush_ip6tables() {
 	ip -6 route del local ::/0 dev lo table 310 >/dev/null 2>&1
 }
 
+# 功能：关闭运行时及 DBus 中的 IPv6 代理开关，并强制开启代理域名 AAAA 过滤。
 disable_ipv6_proxy_runtime() {
 	ss_basic_proxy_ipv6="0"
 	ss_basic_chng_ipv6_drop_proxy="1"
@@ -6191,6 +6006,7 @@ disable_ipv6_proxy_runtime() {
 	dbus set ss_basic_chng_ipv6_drop_proxy="1"
 }
 
+# 功能：IPv6 规则写入失败后清理现场、关闭 IPv6 代理并重启 DNS，保留 IPv4 代理。
 fallback_ipv6_proxy_to_ipv4() {
 	echo_date "⚠️检测到IPv6透明代理规则写入失败，开始回退到IPv4代理模式..."
 	flush_ip6tables
@@ -6201,6 +6017,7 @@ fallback_ipv6_proxy_to_ipv4() {
 	echo_date "✅ 已回退为IPv4代理模式，IPv4透明代理规则继续生效。"
 }
 
+# 功能：等待系统 NAT 规则就绪后加载透明代理规则，失败时回滚防火墙和 ipset。
 load_iptables() {
 	#local nat_ready=$(ip6tables -t nat -L PREROUTING -v -n --line-numbers | grep -v PREROUTING | grep -v destination)
 	local nat_ready=$(iptables -t nat -L PREROUTING -v -n --line-numbers | grep -v PREROUTING | grep -v destination)
@@ -6230,12 +6047,14 @@ load_iptables() {
 # 最后通过 iptables-restore 一次性加载，大幅减少进程 fork 次数。
 # 原来每条规则需要 fork 2次（-C 检查 + -A 添加），现在只需 2次 restore。
 
+# 功能：初始化批量 iptables-restore 的临时文件和 IPv4/IPv6 工作模式。
 batch_iptables_start() {
 	rm -f /tmp/fss_batch_v4_chains /tmp/fss_batch_v4_rules \
 	      /tmp/fss_batch_v6_chains /tmp/fss_batch_v6_rules 2>/dev/null
 	FSS_BATCH_MODE="${1:-4}"
 }
 
+# 功能：一次性提交批量收集的链和规则，随后删除临时文件并退出批处理模式。
 batch_iptables_commit() {
 	local ver="${FSS_BATCH_MODE:-4}"
 	local chains_file="/tmp/fss_batch_v${ver}_chains"
@@ -6252,6 +6071,7 @@ batch_iptables_commit() {
 	FSS_BATCH_MODE=""
 }
 
+# 功能：按当前批处理协议版本记录所需自定义链，避免重复写入。
 batch_ensure_chain() {
 	local table="$1"
 	local chain="$2"
@@ -6262,6 +6082,7 @@ batch_ensure_chain() {
 	fi
 }
 
+# 功能：记录需要创建的 IPv6 自定义链，避免重复写入。
 batch_ensure_chain6() {
 	local table="$1"
 	local chain="$2"
@@ -6272,6 +6093,7 @@ batch_ensure_chain6() {
 	fi
 }
 
+# 功能：将一条规则按当前协议版本追加到批量 restore 规则文件。
 batch_append_rule() {
 	local table="$1"
 	local ver="${FSS_BATCH_MODE:-4}"
@@ -6280,6 +6102,7 @@ batch_append_rule() {
 	echo "-t $table $*" >> "$rules_file"
 }
 
+# 功能：将一条 IPv6 规则追加到批量 restore 规则文件。
 batch_append_rule6() {
 	local table="$1"
 	local ver="${FSS_BATCH_MODE:-6}"
@@ -6288,14 +6111,17 @@ batch_append_rule6() {
 	echo "-t $table $*" >> "$rules_file"
 }
 
+# 功能：确保指定 IPv4 自定义链存在，是 ensure_chain_with_cmd 的 iptables 封装。
 ensure_chain() {
 	ensure_chain_with_cmd iptables "$@"
 }
 
+# 功能：确保指定 IPv6 自定义链存在，是 ensure_chain_with_cmd 的 ip6tables 封装。
 ensure_chain6() {
 	ensure_chain_with_cmd ip6tables "$@"
 }
 
+# 功能：使用指定 iptables 命令检查并创建链，创建失败时返回非零状态。
 ensure_chain_with_cmd() {
 	local cmd="$1"
 	local table="$2"
@@ -6305,14 +6131,17 @@ ensure_chain_with_cmd() {
 	fi
 }
 
+# 功能：检查 IPv4 规则不存在后再追加，是通用追加函数的 iptables 封装。
 append_if_not_exists() {
 	append_if_not_exists_with_cmd iptables "$@"
 }
 
+# 功能：检查 IPv6 规则不存在后再追加，是通用追加函数的 ip6tables 封装。
 append_if_not_exists6() {
 	append_if_not_exists_with_cmd ip6tables "$@"
 }
 
+# 功能：使用指定命令执行 -C 检查，仅在规则不存在时执行 -A 追加。
 append_if_not_exists_with_cmd() {
 	local cmd="$1"
 	local table="$2"
@@ -6330,6 +6159,7 @@ append_if_not_exists_with_cmd() {
 	fi
 }
 
+# 功能：检查 IPv4 规则不存在后使用 -I 插入，避免重复规则。
 insert_if_not_exists() {
 	table="$1"
 	shift
@@ -6351,6 +6181,7 @@ insert_if_not_exists() {
 	fi
 }
 
+# 功能：规范化 Xray 分流入口策略，仅允许 2 大陆白名单引流和 5 全量引流，默认值为 2。
 get_shunt_ingress_mode() {
 	local mode="${ss_basic_shunt_ingress_mode:-2}"
 	case "${mode}" in
@@ -6363,6 +6194,7 @@ get_shunt_ingress_mode() {
 	esac
 }
 
+# 功能：按入口策略创建 IPv4 分流专用 NAT、mangle 和 filter 规则。
 init_shunt_chain_v4() {
 	local ingress_mode="$(get_shunt_ingress_mode)"
 
@@ -6395,6 +6227,7 @@ init_shunt_chain_v4() {
 	fi
 }
 
+# 功能：按入口策略创建 IPv6 分流专用 NAT、mangle 和 filter 规则。
 init_shunt_chain_v6() {
 	local ingress_mode="$(get_shunt_ingress_mode)"
 	local tproxy_port6="$(get_tproxy_port6)"
@@ -6428,6 +6261,8 @@ init_shunt_chain_v6() {
 	fi
 }
 
+# 功能：构建完整 IPv4 透明代理规则，包括各代理模式链、访问控制、DNS 劫持和主链挂载。
+# 副作用：修改 NAT、mangle、filter 表以及 TPROXY 策略路由，失败时返回非零供上层回滚。
 _start_iptables() {
 	#----------------------BASIC RULES---------------------
 	echo_date "写入iptables规则到nat表中..."
@@ -6708,6 +6543,7 @@ _start_iptables() {
 	fi
 }
 
+# 功能：构建并挂载完整 IPv6 透明代理规则；任一关键步骤失败时返回非零以触发 IPv4 回退。
 _start_ipv6_iptables() {
 	echo_date "写入ip6tables规则到ipv6 nat/mangle/filter表中..."
 
@@ -6913,6 +6749,7 @@ _start_ipv6_iptables() {
 	return 0
 }
 
+# 功能：确保系统使用 127.0.0.1 作为本地解析器，然后重启 dnsmasq 并检查进程状态。
 restart_dnsmasq() {
 	# 如果是梅林固件，需要将 【Tool - Other Settings  - Advanced Tweaks and Hacks - Wan: Use local caching DNS server as system resolver (default: No)】此处设置为【是】
 	# 这将确保固件自身的DNS解析使用127.0.0.1，而不是上游的DNS。否则插件的状态检测将无法解析谷歌，导致状态检测失败。
@@ -6934,6 +6771,7 @@ restart_dnsmasq() {
 	detect_running_status dnsmasq
 }
 
+# 功能：在 xt_set 尚未加载且模块文件存在时加载对应内核模块。
 load_module() {
 	xt=$(lsmod | grep xt_set)
 	OS=$(uname -r)
@@ -6944,6 +6782,7 @@ load_module() {
 }
 
 # write number into nvram with no commit
+# 功能：从 rules.json.js 读取规则日期和数量，以单元分隔的单行格式输出。
 read_rules_runtime_numbers_tsv() {
 	[ -f "/koolshare/ss/rules/rules.json.js" ] || return 1
 	run /koolshare/bin/jq -r '
@@ -6967,6 +6806,7 @@ read_rules_runtime_numbers_tsv() {
 	' /koolshare/ss/rules/rules.json.js 2>/dev/null
 }
 
+# 功能：将 gfwlist、chnlist 和 chnroute 的日期及数量写入 nvram，不立即执行 commit。
 write_numbers() {
 	IFS="$(printf '\037')" read -r rule_gfw_date rule_chnlist_date rule_chnroute_date rule_gfw_count rule_chnroute_count rule_chnroute_ip_count rule_chnlist_count <<-EOF
 	$(read_rules_runtime_numbers_tsv)
@@ -6980,6 +6820,7 @@ write_numbers() {
 	nvram set chnlist_numbers="${rule_chnlist_count}"
 }
 
+# 功能：删除插件自动重启的 ss_reboot 定时任务。
 remove_ss_reboot_job() {
 	if [ -n "$(cru l | grep ss_reboot)" ]; then
 		echo_date "【科学上网】：删除插件自动重启定时任务..."
@@ -6987,6 +6828,7 @@ remove_ss_reboot_job() {
 	fi
 }
 
+# 功能：按每日、每周、每月、间隔或自定义时间设置插件自动重启任务。
 set_ss_reboot_job() {
 	if [[ "${ss_reboot_check}" == "0" ]]; then
 		remove_ss_reboot_job
@@ -7017,12 +6859,14 @@ set_ss_reboot_job() {
 	fi
 }
 
+# 功能：删除 ss_tri_check 触发检测定时任务。
 remove_ss_trigger_job() {
 	if [ -n "$(cru l | grep ss_tri_check)" ]; then
 		sed -i '/ss_tri_check/d' /var/spool/cron/crontabs/* >/dev/null 2>&1
 	fi
 }
 
+# 功能：启动成功后按文件名升序执行 postscripts/P* 扩展脚本，并传入 start。
 ss_post_start() {
 	# 在SS插件启动成功后触发脚本
 	local i
@@ -7037,6 +6881,7 @@ ss_post_start() {
 	done
 }
 
+# 功能：停止前按文件名逆序执行 postscripts/P* 扩展脚本，并传入 stop。
 ss_pre_stop() {
 	# 在SS插件关闭前触发脚本
 	local i
@@ -7051,6 +6896,7 @@ ss_pre_stop() {
 	done
 }
 
+# 功能：去重 PID 列表并按指定信号结束进程，同时输出对应的进程用途。
 stop_status_kill_pid_list() {
 	local label="$1"
 	local pids_raw="$2"
@@ -7067,6 +6913,7 @@ stop_status_kill_pid_list() {
 	return 0
 }
 
+# 功能：验证 PID 文件及进程存活状态后，通过 start-stop-daemon 停止对应服务。
 stop_status_kill_pidfile() {
 	local label="$1"
 	local pidfile="$2"
@@ -7080,6 +6927,7 @@ stop_status_kill_pidfile() {
 	return 0
 }
 
+# 功能：停止状态检测脚本、status-tool、详情流及残留进程，并清理 PID、socket、锁和状态文件。
 stop_status() {
 	local status_tool_bin="/koolshare/bin/status-tool"
 	local status_daemon_pidfile="/var/run/status-tool.pid"
@@ -7135,6 +6983,7 @@ stop_status() {
 	rm -rf /tmp/upload/ss_status.txt
 }
 
+# 功能：通过指定在线服务检测出口 IP，可按直连或 SOCKS5/透明代理方式请求并校验结果。
 detect_ip(){
 	local SUBJECT=$1
 	local TIMEOUT=$2
@@ -7163,6 +7012,7 @@ detect_ip(){
 	echo ${IP}
 }
 
+# 功能：使用多个在线源检测代理出口地址和属地，并补充节点服务器解析结果日志。
 check_frn_public_ip(){
 	echo_date "开始代理出口ip检测..."
 
@@ -7252,6 +7102,7 @@ check_frn_public_ip(){
 	fi
 }
 
+# 功能：服务和规则加载完成后，按用户设置执行代理出口 IP 检查。
 finish_start(){
 	# get foreign ip
 	if [ "${ss_basic_nofrnipcheck}" != "1" ];then
@@ -7261,6 +7112,7 @@ finish_start(){
 	fi
 }
 
+# 功能：按故障转移设置重启状态检测服务，并后台预解析常用域名以预热 DNS 和 ipset。
 check_status() {
 	dbus remove ss_basic_wait
 	if [ "$ss_failover_enable" == "1" ]; then
@@ -7283,6 +7135,8 @@ check_status() {
 
 }
 
+# 功能：完整停止插件，执行停止钩子并关闭核心、DNS、状态检测和 WebSocket 相关组件。
+# 副作用：清理配置、防火墙、ipset、定时任务和运行状态，最终将 ss_basic_status 设置为 0。
 disable_ss() {
 	echo_date ======================= 梅林固件 - 【科学上网】 ========================
 	echo_date
@@ -7309,6 +7163,8 @@ disable_ss() {
 	echo_date ------------------------ 【科学上网】已关闭 ----------------------------
 }
 
+# 功能：插件启动/重启总编排，依次处理旧实例、节点配置、代理核心、DNS、防火墙、定时任务和状态检测。
+# 副作用：会停止并重建大部分运行环境；分流热重载满足条件时保留可复用的 Xray 进程。
 apply_ss() {
 	local shunt_hot_restart="0"
 	local shunt_prev_xray_json=""
@@ -7421,6 +7277,7 @@ apply_ss() {
 }
 
 # for debug
+# 功能：输出启动调试信息，包括脚本进程关系、Shell 进程、触发来源及各 IPv4 防火墙链。
 get_status() {
 	echo_date
 	echo_date =========================================================
@@ -7452,6 +7309,7 @@ get_status() {
 	iptables -nvL SHADOWSOCKS_SHU -t nat 2>/dev/null
 }
 
+# 功能：响应 NAT 事件，仅清理并重新加载 iptables，不重复启动代理核心和 DNS。
 apply_ss_by_nat() {
 	# 1. 开机的时候会触发，此时其它组件都没有准备，需要开启
 	# 2. 防火墙重启，重新拨号等会触发，此时其它组件都是ok的，只需要重启iptables
@@ -7464,6 +7322,7 @@ apply_ss_by_nat() {
 	echo_date ------------------------ 【科学上网】 启动完毕 ------------------------
 }
 
+# 功能：在常见系统路径中查找可用的 start-stop-daemon 并输出其路径。
 pick_start_stop_daemon(){
 	for candidate in /sbin/start-stop-daemon /usr/sbin/start-stop-daemon /bin/start-stop-daemon /usr/bin/start-stop-daemon
 	do
@@ -7475,6 +7334,7 @@ pick_start_stop_daemon(){
 	return 1
 }
 
+# 功能：先向指定 PID 发送 TERM，等待后再次发送 KILL，确保遗留进程退出。
 force_kill_pid(){
 	local pid="$1"
 	[ -n "${pid}" ] || return 0
@@ -7483,6 +7343,7 @@ force_kill_pid(){
 	kill -9 "${pid}" >/dev/null 2>&1
 }
 
+# 功能：优先从 PID 文件取得存活的 websocketd 主进程，失败时通过进程列表查找。
 get_ws_master_pid(){
 	local pid=""
 	if [ -f "${WS_PIDFILE}" ];then
@@ -7496,6 +7357,7 @@ get_ws_master_pid(){
 	[ -n "${pid}" ] && echo "${pid}"
 }
 
+# 功能：清理不属于当前 websocketd 主进程的遗留 websocket Shell 子进程。
 cleanup_ws_shells_once(){
 	local active_ws_pid="$1"
 	local pid=""
@@ -7512,6 +7374,7 @@ cleanup_ws_shells_once(){
 	done
 }
 
+# 功能：将 websocketd PID 文件同步为当前存活主进程；主进程不存在时删除 PID 文件。
 sync_ws_pidfile(){
 	local active_ws_pid="$1"
 	[ -n "${active_ws_pid}" ] || active_ws_pid="$(get_ws_master_pid)"
@@ -7522,6 +7385,7 @@ sync_ws_pidfile(){
 	fi
 }
 
+# 功能：在 websocketd 未运行时启动 803 端口服务，并维护 PID 文件、日志和遗留子进程。
 start_ws(){
 	local ssd=""
 	local active_ws_pid=""
@@ -7543,6 +7407,7 @@ start_ws(){
 	cleanup_ws_shells_once "${active_ws_pid}"
 }
 
+# 功能：停止流程中的 WebSocket 清理：同步主进程 PID 文件并清理孤立的 websocket Shell。
 stop_ws(){
 	local active_ws_pid=""
 	active_ws_pid="$(get_ws_master_pid)"
