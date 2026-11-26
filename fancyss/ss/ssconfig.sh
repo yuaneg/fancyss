@@ -3898,7 +3898,7 @@ build_xray_node_config() {
 		"log": {
 			"access": "/tmp/upload/xray_access.log",
 			"error": "/tmp/upload/xray_error.log",
-			"loglevel": "debug"
+			"loglevel": "info"
 		},
 		"inbounds": [
 	EOF
