@@ -1362,7 +1362,7 @@ kill_process() {
 	if [ -n "${IPT2SOCKS_PID}" ];then
 		echo_date "关闭ipt2socks进程..."
 		killall ipt2socks
-	fi	
+	fi
 
 	local NAIVE_PID=$(ps | grep "naive" | grep -v grep | awk '{print $1}')
 	if [ -n "${NAIVE_PID}" ];then
@@ -4601,6 +4601,18 @@ start_xray() {
 			echo 1 >/proc/sys/net/ipv4/tcp_fastopen
 		fi
 	fi
+
+	# 通过解析 xray.json 判断是否可以用 leaf 替代（仅 hnd_v8/mtk 平台有 leaf 二进制）
+	if [ -x "/koolshare/bin/leaf" ] && [ -x "/koolshare/scripts/start_sslocal_from_xray.sh" ]; then
+		echo_date "检测到已安装 leaf，尝试解析 xray.json 判断是否可用 leaf 替代"
+		if /bin/sh /koolshare/scripts/start_sslocal_from_xray.sh; then
+			echo_date "leaf 启动成功，跳过 xray 主进程"
+			return 0
+		else
+			echo_date "leaf 启动失败或配置不匹配，回退到 xray 主进程"
+		fi
+	fi
+
 	# xray start
 	echo_date "开启Xray主进程..."
 	cd /koolshare/bin
@@ -7000,7 +7012,7 @@ detect_ip(){
 		local IP=$(run curl-fancyss ${CURL_IP_FLAG} -s -m ${TIMEOUT} ${SUBJECT} 2>&1 | grep -Eo "([0-9]{1,3}[\.]){3}[0-9]{1,3}" | grep -v "Terminated")
 	elif [ "${METHOD}" == "1" ];then
 		# 检测代理ip
-		local SOCKS5_OPEN=$(netstat -nlpt 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig")
+		local SOCKS5_OPEN=$(netstat -nlpt 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig|ipt2socks|leaf")
 		if [ -n "${SOCKS5_OPEN}" ];then
 			local IP=$(run curl-fancyss ${CURL_IP_FLAG} -s -x socks5h://127.0.0.1:23456 -m ${TIMEOUT} ${SUBJECT} 2>&1 | grep -v "Terminated")
 		else
@@ -7016,7 +7028,7 @@ detect_ip(){
 check_frn_public_ip(){
 	echo_date "开始代理出口ip检测..."
 
-	local SOCKS5_OPEN=$(netstat -nlp 2>/dev/null | grep -w "23456" | grep -Eo "v2ray|xray|naive|tuic|anytls-zig" | head -n1)
+	local SOCKS5_OPEN=$(netstat -nlp 2>/dev/null | grep -w "23456" | grep -Eo "v2ray|xray|naive|tuic|anytls-zig|ipt2socks|leaf" | head -n1)
 	if [ -n "${SOCKS5_OPEN}" ];then
 		echo_date "检测方式1：socks5"
 	else
@@ -7461,7 +7473,7 @@ flush_nat)
 		;;
 start_nat)
 	# start on nat-start
-	SOCKS5_OPEN=$(netstat -nlpt 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig")
+	SOCKS5_OPEN=$(netstat -nlpt 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig|ipt2socks|leaf")
 	if [ -z "${SOCKS5_OPEN}" ];then
 		# 代理程序没有运行，可能是刚开机，不继续
 		return 0

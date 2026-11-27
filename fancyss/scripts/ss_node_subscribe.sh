@@ -7312,7 +7312,7 @@ download_by_curl(){
 
 		# 下载失败，使用代理下载
 		echo_date "❌️直连下载订阅失败！尝试使用当前节点代理下载订阅！"
-		SOCKS5_OPEN=$(netstat -nlp 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig")
+		SOCKS5_OPEN=$(netstat -nlp 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig|ipt2socks|leaf")
 		if [ -n "${SOCKS5_OPEN}" ];then
 			SUB_LAST_DOWNLOAD_MODE="proxy"
 			echo_date "✈️使用当前$(get_type_name "$(sub_get_node_field_plain "${CURR_NODE}" type)")节点：[$(sub_get_node_field_plain "${CURR_NODE}" name)]提供的网络下载..."
@@ -7325,7 +7325,7 @@ download_by_curl(){
 		fi
 	elif [ "${SUB_BY_PROXY}" == "1" ]; then
 		# 代理下载
-		SOCKS5_OPEN=$(netstat -nlp 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig")
+		SOCKS5_OPEN=$(netstat -nlp 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig|ipt2socks|leaf")
 		if [ -n "${SOCKS5_OPEN}" ];then
 			local EXT_ARG="-x socks5h://127.0.0.1:23456"
 			SUB_LAST_DOWNLOAD_MODE="proxy"

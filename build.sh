@@ -83,13 +83,26 @@ sync_binary(){
 	# done
 
 	# update to latest binary
-	BINS_COPY="xray naive ipt2socks"
+	BINS_COPY="xray naive ipt2socks leaf"
 	for BIN in $BINS_COPY;
 	do
 		local VERSION_FLAG="latest.txt"
 
 		if [ "${BIN}" == "xray" ];then
 			local VERSION_FLAG="latest_2.txt"
+		fi
+
+		if [ "${BIN}" == "leaf" ];then
+			local version=$(cat ${CURR_PATH}/binaries/leaf/${VERSION_FLAG})
+			echo ">>> start to copy latest ${BIN}, version: ${version}"
+			# leaf 只有 aarch64 版本，只复制到 hnd_v8 和 mtk 平台
+			cp -rf ${CURR_PATH}/binaries/leaf/${version}/${BIN}_arm64 ${CURR_PATH}/fancyss/bin-mtk/${BIN}
+			cp -rf ${CURR_PATH}/binaries/leaf/${version}/${BIN}_arm64 ${CURR_PATH}/fancyss/bin-hnd_v8/${BIN}
+			continue
+		fi
+
+		if [ "${BIN}" == "sslocal" ];then
+			continue
 		fi
 
 		local version=$(cat ${CURR_PATH}/binaries/${BIN}/${VERSION_FLAG})
@@ -446,7 +459,6 @@ gen_folder(){
 		rm -rf ./shadowsocks/bin/naive
 		rm -rf ./shadowsocks/bin/tuic-client
 		rm -rf ./shadowsocks/bin/anytls-zig
-		rm -rf ./shadowsocks/bin/ipt2socks
 		rm -rf ./shadowsocks/bin/haveged
 
 		# remove scripts

@@ -64,7 +64,7 @@ update_ss(){
 		ln -sf /koolshare/bin/curl-fancyss /tmp/curl-update
 	fi
 
-	SOCKS5_OPEN=$(netstat -nlp 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig")
+	SOCKS5_OPEN=$(netstat -nlp 2>/dev/null|grep -w "23456"|grep -Eo "v2ray|xray|naive|tuic|anytls-zig|ipt2socks|leaf")
 	if [ -n "${SOCKS5_OPEN}" ];then
 		run /tmp/curl-update -4sk -L --connect-timeout 5 --max-time 120 --retry 3 --retry-delay 1 -x socks5h://127.0.0.1:23456 ${main_url}/${VERSION} >/tmp/version.json.js
 	else
